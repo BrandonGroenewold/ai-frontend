@@ -56,6 +56,24 @@
 
   @media (max-width:900px) { #bl, #br { display:none; } }
   @media (max-width:640px) { #tl .dim, #tr .dim { display:none; } .big { font-size:22px; } #tl { left:24px; } #tr { right:24px; }   @media (max-width:900px) { #bl, #br { display:none; } } }
+  #jvTxt { display:flex; flex-direction:column; justify-content:flex-end; max-height:6em; overflow:hidden; }
+
+  #chatPanel { position:fixed; right:36px; top:120px; bottom:160px; width:300px; display:flex; flex-direction:column;
+    font:12px/1.5 "Bahnschrift","Segoe UI",system-ui,sans-serif; letter-spacing:.03em; color:rgba(var(--rgb),.92);
+    border-right:1px solid rgba(var(--rgb),.4); padding-right:12px; animation:cfade 1.2s ease 2.2s both; }
+  @keyframes cfade { from { opacity:0; } to { opacity:1; } }
+  #chatHead { display:flex; justify-content:space-between; cursor:pointer; user-select:none;
+    color:rgba(var(--rgb),.6); font-size:11px; letter-spacing:.14em; margin-bottom:8px; }
+  #chatLog { flex:1; overflow-y:auto; scrollbar-width:thin; scrollbar-color:rgba(var(--rgb),.35) transparent; }
+  #chatPanel.min { bottom:auto; }
+  #chatPanel.min #chatLog { display:none; }
+  .msg { margin:0 0 10px; }
+  .msg .who { font-size:10px; letter-spacing:.16em; color:rgba(var(--rgb),.55); }
+  .msg .body { white-space:pre-wrap; word-wrap:break-word; color:#eafffb; }
+  .msg.you .body { color:rgba(var(--rgb),.85); }
+  @media (max-width:1320px) { #chatPanel { display:none; } }
+  #ctl button[data-s] { display:none; }  /* demo buttons hidden; delete this line to bring them back */
+  #leds, .row2:has(#sCtx) { display:none; }  /* fake status dots and CTX gauge */
 </style>
 </head>
 <body>
@@ -89,6 +107,11 @@
   <div id="jvTxt"></div>
 </div>
 
+<div id="chatPanel">
+  <div id="chatHead"><span>CONVERSATION</span><span id="chatMin">hide</span></div>
+  <div id="chatLog"></div>
+</div>
+
 <div id="ctl">
   <div id="chat"><input id="chatIn" type="text" autocomplete="off" placeholder="Type a message and press Enter" aria-label="Message"></div>
   <button data-s="auto" class="on">Auto demo</button>
@@ -97,6 +120,8 @@
   <button data-s="thinking">Thinking</button>
   <button data-s="speaking">Speaking</button>
   <button data-s="claude">Claude</button>
+  <button id="keyBtn" title="Change the push-to-talk key">Key: ...</button>
+  <button id="handsBtn" title="Toggle the Hey Jarvis wake word">Hands-free: off</button>
   <label>Dot density <input id="dens" type="range" min="1" max="6" step="0.5" value="4"><span id="densTxt"></span></label>
 </div>
 
@@ -376,12 +401,7 @@
 
   /* ---------- edge instruments ---------- */
   const t0 = Date.now();
-  const EV = [
-    { t: t0 - 36 * 60000, n: 'Deploy' },
-    { t: t0 + 42 * 60000, n: 'Standup' },
-    { t: t0 + 131 * 60000, n: 'Lunch' },
-    { t: t0 + 205 * 60000, n: 'Review' }
-  ];
+  const EV = [];  // real calendar events can go here later
 
   // top: heading-style time tape with event flags
   function drawTimeTape(a) {
@@ -442,7 +462,8 @@
     for (let n = 0; n < 40; n++) {
       const last = tk.items[tk.items.length - 1];
       if (last && last.x + last.w + gap > W + 40 * DPR) break;
-      const src = tk.queue.length ? tk.queue.shift() : FILL[tk.fill++ % FILL.length]();
+      if (!tk.queue.length) break;  // only real events, no filler
+      const src = tk.queue.shift();
       const it = { tm: new Date().toLocaleTimeString([], { hour12: false }) + '  ', a: src[0] + '  ', b: src[1] };
       it.w1 = ctx.measureText(it.tm).width; it.w2 = ctx.measureText(it.a).width;
       it.w = it.w1 + it.w2 + ctx.measureText(it.b).width;
@@ -542,7 +563,6 @@
       update: reduce ? () => draw(0, 0) : undefined }, PRE[s], { k: b === 'claude' ? 1 : 0 }));
   }
   const pushLog = (a, b) => tk.queue.push([a, b]);
-  [['Model loaded', '14B Q4, 7.4 GB'], ['Voice pipeline', 'ready'], ['Pi-hole', 'reachable']].forEach(x => pushLog(x[0], x[1]));
 
   /* ---------- demo scenarios ---------- */
   const SC = [
@@ -588,7 +608,7 @@
   }
 
   /* ---------- controls ---------- */
-  const chips = [...document.querySelectorAll('#ctl button')];
+  const chips = [...document.querySelectorAll('#ctl button[data-s]')];
   const mark = name => chips.forEach(b => b.classList.toggle('on', b.dataset.s === name));
   function manual(name) {
     auto = false; runId++; mark(name);
@@ -599,14 +619,66 @@
     if (b.dataset.s === 'auto') { auto = true; runId++; mark('auto'); demo(runId); }
     else manual(b.dataset.s);
   }));
-  cv.addEventListener('click', () => manual(state === 'listening' ? 'idle' : 'listening'));
+  const LISTEN_URL = 'http://localhost:8000/listen';
+  function toggleListen() {
+    if (LIVE.on) fetch(LISTEN_URL, { method: 'POST' }).catch(() => pushLog('Mic', 'request failed'));
+    else manual(state === 'listening' ? 'idle' : 'listening');  // demo mode, no backend
+  }
+  cv.addEventListener('click', toggleListen);
   cv.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); manual(state === 'listening' ? 'idle' : 'listening'); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleListen(); }
   });
   let densTimer;
   $('dens').addEventListener('input', e => {
     DENS = +e.target.value; $('densTxt').textContent = '…';
     clearTimeout(densTimer); densTimer = setTimeout(() => { buildShell(); if (reduce) draw(0, 0); }, 80);
+  });
+
+   /* ---------- conversation log ---------- */
+  const chatLog = $('chatLog');
+  let curJv = null;
+  const nearBottom = () => chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 40;
+  function addMsg(role, text) {
+    const d = document.createElement('div'); d.className = 'msg ' + role;
+    const who = document.createElement('div'); who.className = 'who'; who.textContent = role === 'you' ? 'YOU' : 'JARVIS';
+    const body = document.createElement('div'); body.className = 'body'; body.textContent = text;
+    d.append(who, body);
+    const stick = nearBottom();
+    chatLog.appendChild(d);
+    while (chatLog.children.length > 60) chatLog.firstChild.remove();
+    if (stick) chatLog.scrollTop = chatLog.scrollHeight;
+    return body;
+  }
+  function appendMsg(body, text) {
+    const stick = nearBottom();
+    body.textContent += text;
+    if (stick) chatLog.scrollTop = chatLog.scrollHeight;
+  }
+  $('chatHead').addEventListener('click', () => {
+    const m = $('chatPanel').classList.toggle('min');
+    $('chatMin').textContent = m ? 'show' : 'hide';
+  });
+
+  /* ---------- push-to-talk key ---------- */
+  const keyBtn = $('keyBtn');
+  const HOTKEY_URL = 'http://localhost:8000/hotkey';
+  const prettyKey = k => k === 'media_play_pause' ? 'Play/Pause'
+    : k.length <= 3 ? k.toUpperCase() : k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+  const showKey = k => { keyBtn.textContent = 'Key: ' + prettyKey(k); };
+  function loadHotkey() { fetch(HOTKEY_URL).then(r => r.json()).then(d => showKey(d.key)).catch(() => {}); }
+  keyBtn.addEventListener('click', () => {
+    if (!LIVE.on) return;
+    keyBtn.textContent = 'Press a key...';
+    fetch(HOTKEY_URL + '/learn', { method: 'POST' }).catch(() => pushLog('Key', 'request failed'));
+  });
+
+    const handsBtn = $('handsBtn');
+  handsBtn.addEventListener('click', () => {
+    if (!LIVE.on) return;
+    fetch('http://localhost:8000/handsfree', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => { handsBtn.textContent = 'Hands-free: ' + (d.on ? 'on' : 'off'); handsBtn.classList.toggle('on', d.on); })
+      .catch(() => pushLog('Hands-free', 'request failed'));
   });
 
   /* ---------- live link (WebSocket) ---------- */
@@ -621,14 +693,17 @@
         setState(m.value, m.brain === 'claude' ? 'claude' : 'local');
         break;
       case 'transcript':
-        if (m.role === 'you') { $('youTxt').textContent = '\u201C' + m.text + '\u201D'; $('jvTxt').textContent = ''; }
-        else $('jvTxt').textContent = m.text;
+        if (m.role === 'you') { $('youTxt').textContent = '\u201C' + m.text + '\u201D'; $('jvTxt').textContent = ''; addMsg('you', m.text); curJv = null; }
+        else { $('jvTxt').textContent = m.text; curJv = addMsg('jarvis', m.text); }
         break;
       case 'reply': {
         const el = $('jvTxt');
         el.textContent = m.append ? el.textContent + m.text : m.text;
+        if (!m.append || !curJv) curJv = addMsg('jarvis', m.text);
+        else appendMsg(curJv, m.text);
         break;
       }
+      case 'hotkey': showKey(m.value); break;
       case 'log': pushLog(m.label || 'Event', m.detail || ''); break;
       case 'metrics':
         for (const k of ['vram', 'ram', 'cpu', 'temp', 'ctx']) if (typeof m[k] === 'number') M[k] = m[k];
@@ -702,7 +777,6 @@
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-    setTimeout(() => { if (!LIVE.on) demo(runId); }, 2600);
 })();
 </script>
 </body>
