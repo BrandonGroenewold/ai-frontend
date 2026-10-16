@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jarvis HUD: edge instruments</title>
+<style>
+  :root { --rgb: 80,222,205; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#010708; }
+  #c { position:fixed; inset:0; width:100%; height:100%; display:block; cursor:pointer; outline:none; }
+  #c:focus-visible { outline:2px solid rgba(var(--rgb),.7); outline-offset:-4px; }
+
+  .p { position:fixed; pointer-events:none; color:rgba(var(--rgb),.92);
+    font:12px/1.55 "Bahnschrift","Segoe UI",system-ui,sans-serif; letter-spacing:.04em; font-variant-numeric:tabular-nums; }
+  .box { border-left:1px solid rgba(var(--rgb),.4); padding-left:12px; }
+  .r { border-left:0; border-right:1px solid rgba(var(--rgb),.4); padding:0 12px 0 0; text-align:right; }
+  .dim { color:rgba(var(--rgb),.55); }
+  .big { font-size:30px; line-height:1.15; font-weight:600; color:#eafffb; }
+  .title { font-size:20px; font-weight:600; letter-spacing:.3em; color:#eafffb; }
+  .row2 { display:flex; align-items:center; gap:8px; margin:3px 0; }
+  .lb { min-width:38px; color:rgba(var(--rgb),.6); font-size:11px; letter-spacing:.14em; }
+  .val { min-width:74px; text-align:right; white-space:nowrap; }
+  .seg { display:inline-flex; gap:2px; }
+  .seg i { display:block; width:8px; height:10px; background:rgba(var(--rgb),.16); }
+  .seg i.on { background:rgba(var(--rgb),.95); box-shadow:0 0 6px rgba(var(--rgb),.6); }
+  .dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin:0 5px 0 12px; background:rgba(var(--rgb),.95); box-shadow:0 0 6px rgba(var(--rgb),.9); }
+
+  #tl, #tr, #bl, #br, #ctl { opacity:0; }
+  #tl { top:30px; left:36px; }
+  #tr { top:30px; right:36px; }
+  #bl { left:36px; bottom:52px; width:262px; }
+  #br { right:36px; bottom:52px; width:262px; }
+  #leds { margin-top:6px; white-space:nowrap; }
+
+  #tx { left:50%; transform:translateX(-50%); bottom:150px; width:min(640px,92vw); text-align:center; font-size:14px; line-height:1.5; min-height:60px; }
+  #youTxt { color:rgba(var(--rgb),.7); }
+  #jvTxt { color:#eafffb; }
+
+  #ctl { position:fixed; left:50%; transform:translateX(-50%); bottom:40px; width:min(520px,94vw);
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center;
+    font:12px "Bahnschrift","Segoe UI",system-ui,sans-serif; color:rgba(var(--rgb),.85); }
+  #ctl button { font:inherit; letter-spacing:.06em; color:inherit; background:transparent; cursor:pointer;
+    border:1px solid rgba(var(--rgb),.4); border-radius:999px; padding:4px 12px; }
+  #ctl button:hover { background:rgba(var(--rgb),.12); }
+  #ctl button.on { background:rgba(var(--rgb),.22); border-color:rgba(var(--rgb),.9); }
+  #ctl label { display:flex; align-items:center; gap:8px; }
+  #ctl input { accent-color:rgb(var(--rgb)); width:110px; }
+
+    #chat { flex-basis:100%; display:flex; margin-bottom:4px; }
+  #chatIn { flex:1; font:inherit; font-size:13px; letter-spacing:.04em; color:#eafffb;
+    background:rgba(var(--rgb),.06); border:1px solid rgba(var(--rgb),.4); border-radius:999px;
+    padding:6px 16px; outline:none; }
+  #chatIn::placeholder { color:rgba(var(--rgb),.45); }
+  #chatIn:focus { border-color:rgba(var(--rgb),.9); background:rgba(var(--rgb),.12); }
+  #chatIn:disabled { opacity:.5; }
+
+  @media (max-width:900px) { #bl, #br { display:none; } }
+  @media (max-width:640px) { #tl .dim, #tr .dim { display:none; } .big { font-size:22px; } #tl { left:24px; } #tr { right:24px; }   @media (max-width:900px) { #bl, #br { display:none; } } }
+  #jvTxt { display:flex; flex-direction:column; justify-content:flex-end; max-height:6em; overflow:hidden; }
+
+  #chatPanel { position:fixed; right:36px; top:156px; bottom:160px; width:300px; display:flex; flex-direction:column;
+    font:12px/1.5 "Bahnschrift","Segoe UI",system-ui,sans-serif; letter-spacing:.03em; color:rgba(var(--rgb),.92);
+    border-right:1px solid rgba(var(--rgb),.4); padding-right:12px; animation:cfade 1.2s ease 2.2s both; }
+  @keyframes cfade { from { opacity:0; } to { opacity:1; } }
+  #chatHead { display:flex; justify-content:space-between; cursor:pointer; user-select:none;
+    color:rgba(var(--rgb),.6); font-size:11px; letter-spacing:.14em; margin-bottom:8px; }
+  #chatLog { flex:1; overflow-y:auto; scrollbar-width:thin; scrollbar-color:rgba(var(--rgb),.35) transparent; }
+  #chatPanel.min { bottom:auto; }
+  #chatPanel.min #chatLog { display:none; }
+  .msg { margin:0 0 10px; }
+  .msg .who { font-size:10px; letter-spacing:.16em; color:rgba(var(--rgb),.55); }
+  .msg .body { white-space:pre-wrap; word-wrap:break-word; color:#eafffb; }
+  .msg.you .body { color:rgba(var(--rgb),.85); }
+  @media (max-width:1320px) { #chatPanel { display:none; } }
+  #ctl button[data-s] { display:none; }  /* demo buttons hidden; delete this line to bring them back */
+  #leds { display:none; }  /* fake status dots */
+</style>
+</head>
+<body>
+<canvas id="c" tabindex="0" role="button" aria-pressed="false" aria-label="Jarvis hub. Toggle listening"></canvas>
+
+<div class="p" id="tl"><div class="box">
+  <div class="title">JARVIS</div>
+  <div id="stateLbl">Standing by</div>
+  <div class="dim" id="brainLbl">Local model · on-device</div>
+</div></div>
+
+<div class="p" id="tr"><div class="box r">
+  <div class="big" id="clock">--:--</div>
+  <div class="dim" id="date"></div>
+  <div id="wxLine" style="margin-top:4px;color:#eafffb"></div>
+  <div class="dim" id="wxWind"></div>
+</div></div>
+
+<div class="p" id="bl"><div class="box">
+  <div class="row2"><span class="lb">VRAM</span><span class="seg" id="sVram" data-n="12"></span><span class="val" id="vVram"></span></div>
+  <div class="row2"><span class="lb">RAM</span><span class="seg" id="sRam" data-n="12"></span><span class="val" id="vRam"></span></div>
+  <div class="row2"><span class="lb">CPU</span><span class="seg" id="sCpu" data-n="12"></span><span class="val" id="vCpu"></span></div>
+  <div class="row2"><span class="lb">BACK</span><span class="val" id="vGitBack" style="margin-left:auto">--</span></div>
+  <div class="row2"><span class="lb">FRONT</span><span class="val" id="vGitFront" style="margin-left:auto">--</span></div>
+</div></div>
+
+<div class="p" id="br"><div class="box">
+  <div class="row2"><span class="lb">CTX</span><span class="seg" id="sCtx" data-n="12"></span><span class="val" id="vCtx"></span></div>
+  <div class="row2"><span class="lb">TEMP</span><span class="seg" id="sTemp" data-n="12"></span><span class="val" id="vTemp"></span></div>
+  <div class="row2"><span class="lb">LLM</span><span class="val" id="vLlm" style="margin-left:auto">--</span></div>
+  <div class="row2"><span class="lb">TTFT</span><span class="val" id="vTtft" style="margin-left:auto">--</span></div>
+  <div class="row2"><span class="lb">TPS</span><span class="val" id="vTps" style="margin-left:auto">--</span></div>
+  <div id="leds"><span class="dot" style="margin-left:0"></span>DNS<span class="dot"></span>GIT<span class="dot"></span>CI<span class="dot"></span>WEB<span class="dot"></span>API</div>
+</div></div>
+
+<div class="p" id="tx">
+  <div id="youTxt"></div>
+  <div id="jvTxt"></div>
+</div>
+
+<div id="chatPanel">
+  <div id="chatHead"><span>CONVERSATION</span><span id="chatMin">hide</span></div>
+  <div id="chatLog"></div>
+</div>
+
+<div id="ctl">
+  <div id="chat"><input id="chatIn" type="text" autocomplete="off" placeholder="Type a message and press Enter" aria-label="Message"></div>
+  <button data-s="auto" class="on">Auto demo</button>
+  <button data-s="idle">Idle</button>
+  <button data-s="listening">Listening</button>
+  <button data-s="thinking">Thinking</button>
+  <button data-s="speaking">Speaking</button>
+  <button data-s="claude">Claude</button>
+  <button id="keyBtn" title="Change the push-to-talk key">Key: ...</button>
+  <button id="handsBtn" title="Toggle the Hey Jarvis wake word">Hands-free: off</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const cv = $('c'), ctx = cv.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const TAU = Math.PI * 2;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const pad = n => String(n).padStart(2, '0');
+
+  let DPR = 1, cx = 0, cy = 0, U = 0;
+
+  /* ---------- animated state (anime.js) ---------- */
+  const S    = { rotY: 0, segRot: 0, hexRot: 0, phase: 0 };
+  const mood = { energy: .15, amp: 1, pull: 1, spin: 1, scan: 0, speak: 0, listen: 0, think: 0, k: 0 };
+  const boot = { sphere: 0, seg: 0, shell: 0, hud: 0 };
+  let state = 'idle', brain = 'local', frameMic = 0, frameEnv = 0;
+
+  /* ---------- palette: teal <-> amber (k = 0 local, 1 Claude) ---------- */
+  const P = {
+    main:  [[80,222,205],[255,176,84]],  light: [[207,255,247],[255,236,206]],
+    white: [[240,255,252],[255,246,232]], seg0:  [[28,96,150],[150,76,18]],
+    seg1:  [[84,182,208],[244,180,78]],   hex:   [[70,200,190],[220,152,66]],
+    bg:    [[6,58,52],[74,42,6]],         glow:  [[20,120,110],[140,84,14]],
+    sf0:   [[38,120,112],[150,96,30]],    sf1:   [[2,18,20],[22,13,2]],
+    line:  [[90,225,210],[255,190,100]]
+  };
+  const rgb = p => [lerp(p[0][0], p[1][0], mood.k), lerp(p[0][1], p[1][1], mood.k), lerp(p[0][2], p[1][2], mood.k)];
+  const col = (p, a) => { const c = rgb(p); return `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`; };
+  const FONT = 'Bahnschrift, "Segoe UI", system-ui, sans-serif';
+
+  /* ---------- geodesic sphere ---------- */
+  const norm = v => { const l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; };
+  function icosphere(level) {
+    const t = (1 + Math.sqrt(5)) / 2;
+    const V = [[-1,t,0],[1,t,0],[-1,-t,0],[1,-t,0],[0,-1,t],[0,1,t],[0,-1,-t],[0,1,-t],[t,0,-1],[t,0,1],[-t,0,-1],[-t,0,1]].map(norm);
+    let F = [[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],
+             [3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]];
+    for (let l = 0; l < level; l++) {
+      const cache = new Map();
+      const mid = (a, b) => {
+        const k = a < b ? a + '_' + b : b + '_' + a;
+        if (cache.has(k)) return cache.get(k);
+        V.push(norm([(V[a][0]+V[b][0])/2, (V[a][1]+V[b][1])/2, (V[a][2]+V[b][2])/2]));
+        cache.set(k, V.length - 1); return V.length - 1;
+      };
+      const nf = [];
+      for (const [a, b, c] of F) {
+        const ab = mid(a, b), bc = mid(b, c), ca = mid(c, a);
+        nf.push([a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]);
+      }
+      F = nf;
+    }
+    const seen = new Set(), E = [];
+    for (const f of F) for (let i = 0; i < 3; i++) {
+      const a = f[i], b = f[(i + 1) % 3], k = a < b ? a * 5000 + b : b * 5000 + a;
+      if (!seen.has(k)) { seen.add(k); E.push([a, b]); }
+    }
+    return { V, E };
+  }
+  const GEO = icosphere(3);
+  const PX = new Float32Array(GEO.V.length), PY = new Float32Array(GEO.V.length), PZ = new Float32Array(GEO.V.length);
+  const EB = [[], [], [], [], [], []];
+
+  function drawSphere(t, a) {
+    if (a <= .002) return;
+    const sR = .345 * U * (.75 + .25 * a);
+    ctx.save(); ctx.globalAlpha = a;
+    const g = ctx.createRadialGradient(cx - sR * .25, cy - sR * .25, sR * .1, cx, cy, sR);
+    g.addColorStop(0, col(P.sf0, .42)); g.addColorStop(1, col(P.sf1, .9));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, sR, 0, TAU); ctx.fill();
+
+    const ry = S.rotY * Math.PI / 180, cyw = Math.cos(ry), syw = Math.sin(ry);
+    const tilt = .38, ct = Math.cos(tilt), st = Math.sin(tilt);
+    const disp = .07 * Math.max(0, mood.energy - .1) + .03 * mood.speak * frameEnv;
+    const V = GEO.V;
+    for (let i = 0; i < V.length; i++) {
+      const v = V[i];
+      const d = 1 + disp * Math.sin(v[0] * 5 + v[1] * 4 + t * 3.2) * Math.cos(v[2] * 4 - t * 2.1);
+      const x = v[0] * d, y = v[1] * d, z = v[2] * d;
+      const x1 = x * cyw + z * syw, z1 = -x * syw + z * cyw;
+      const y2 = y * ct - z1 * st, z2 = y * st + z1 * ct;
+      const k = 1 / (1 - z2 * .16);
+      PX[i] = cx + x1 * sR * k; PY[i] = cy + y2 * sR * k; PZ[i] = z2;
+    }
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, sR, 0, TAU); ctx.clip();
+    for (let b = 0; b < 6; b++) EB[b].length = 0;
+    const E = GEO.E, th = mood.think;
+    for (let i = 0; i < E.length; i++) {
+      const p = E[i][0], q = E[i][1];
+      const za = (PZ[p] + PZ[q]) * .25 + .5;
+      let val = .10 + .85 * za * za;
+      if (th > .01) {
+        const w = Math.sin((PY[p] + PY[q]) / sR * 1.6 - t * 5);
+        if (w > 0) val += .55 * th * w * w * (.4 + .6 * za);
+      }
+      EB[Math.min(5, Math.floor(val * 6))].push(i);
+    }
+    ctx.lineWidth = DPR;
+    for (let b = 0; b < 6; b++) {
+      if (!EB[b].length) continue;
+      ctx.strokeStyle = col(P.light, ((b + .5) / 6) * .9);
+      ctx.beginPath();
+      for (const i of EB[b]) { const p = E[i][0], q = E[i][1]; ctx.moveTo(PX[p], PY[p]); ctx.lineTo(PX[q], PY[q]); }
+      ctx.stroke();
+    }
+    ctx.fillStyle = col(P.light, .65);
+    for (let i = 0; i < V.length; i++) if (PZ[i] > .15) ctx.fillRect(PX[i] - DPR * .6, PY[i] - DPR * .6, DPR * 1.2, DPR * 1.2);
+    ctx.restore();
+
+    ctx.shadowColor = col(P.main, .8); ctx.shadowBlur = 12 * DPR;
+    ctx.strokeStyle = col(P.white, .95); ctx.lineWidth = 2.2 * DPR;
+    ctx.beginPath(); ctx.arc(cx, cy, sR, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+
+  /* ---------- honeycomb rings ---------- */
+  function hexRing(r, n, rot, alpha, t, offset) {
+    const step = TAU / n, s = (r * step) / 1.75;
+    ctx.lineWidth = DPR;
+    for (let i = 0; i < n; i++) {
+      const a = rot + (i + offset) * step - Math.PI / 2;
+      const sh = .5 + .5 * Math.sin(i * .7 + t * 1.1 + r * .02);
+      const hx = cx + Math.cos(a) * r, hy = cy + Math.sin(a) * r;
+      ctx.beginPath();
+      for (let k = 0; k < 6; k++) {
+        const b = a + k * TAU / 6, px = hx + Math.cos(b) * s, py = hy + Math.sin(b) * s;
+        k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+      if (sh > .82) { ctx.fillStyle = col(P.hex, alpha * .35); ctx.fill(); }
+      ctx.strokeStyle = col(P.hex, alpha * (.35 + .65 * sh)); ctx.stroke();
+    }
+  }
+  function drawHex(t, a) {
+    if (a <= .002) return;
+    const rot = S.hexRot * Math.PI / 180;
+    hexRing(.415 * U, 46, rot, .30 * a, t, 0);
+    hexRing(.480 * U, 54, -rot, .26 * a, t, .5);
+    hexRing(.835 * U, 110, -rot, .22 * a, t, 0);
+    hexRing(.870 * U, 118, rot, .18 * a, t, .5);
+  }
+
+  /* ---------- blue segment ring ---------- */
+  function drawSegments(t, a) {
+    if (a <= .002) return;
+    const N = 72, T = 4, step = TAU / N, gap = step * .14, e = mood.energy;
+    const base = .57 * U, th = .048 * U, tg = .008 * U, rot = S.segRot * Math.PI / 180, grow = .9 + .1 * a;
+    const c0 = rgb(P.seg0), c1 = rgb(P.seg1), scanA = t * 2.2;
+    for (let i = 0; i < N; i++) {
+      const a0 = rot + i * step, phi = a0 + step / 2;
+      const prof = .5 + .5 * Math.cos(phi + Math.PI / 2);
+      const n1 = Math.sin(phi * 5 + t * .8), n2 = Math.sin(phi * 9 - t * 1.3 + 1.7), n3 = Math.sin(i * 2.7 + t * 8);
+      let lvl = .22 + .5 * prof + .16 * (n1 * .6 + n2 * .4) + e * .18 * n3;
+      lvl += mood.speak * frameEnv * .3 * (.5 + .5 * Math.sin(i * .5 - t * 9));
+      lvl += mood.listen * frameMic * .3 * (.5 + .5 * Math.sin(i * .9 + t * 6));
+      if (mood.scan > .01) {
+        const d = Math.abs(((phi - scanA + Math.PI) % TAU + TAU) % TAU - Math.PI);
+        lvl += mood.scan * .75 * Math.exp(-d * d / .12);
+      }
+      lvl = clamp(lvl, .05, 1);
+      for (let k = 0; k < T; k++) {
+        const fa = clamp(lvl * T - k, 0, 1), q = k / (T - 1);
+        const r0 = (base + k * (th + tg)) * grow, r1 = r0 + th * grow;
+        ctx.fillStyle = `rgba(${lerp(c0[0], c1[0], q) | 0},${lerp(c0[1], c1[1], q) | 0},${lerp(c0[2], c1[2], q) | 0},${(.10 + .62 * fa) * a})`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r1, a0 + gap / 2, a0 + step - gap / 2);
+        ctx.arc(cx, cy, r0, a0 + step - gap / 2, a0 + gap / 2, true);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+    ctx.strokeStyle = col(P.hex, .2 * a); ctx.lineWidth = DPR;
+    [.565, .81].forEach(r => { ctx.beginPath(); ctx.arc(cx, cy, r * U * grow, 0, TAU); ctx.stroke(); });
+  }
+
+  function drawRipples(t) {
+    if (mood.speak < .02) return;
+    for (let i = 0; i < 3; i++) {
+      const p = (t * .45 + i / 3) % 1, r = (.35 + p * .62) * U;
+      ctx.strokeStyle = col(P.main, (1 - p) * .5 * mood.speak * boot.sphere);
+      ctx.lineWidth = DPR * (2.2 - p * 1.6);
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke();
+    }
+  }
+
+  /* ---------- particle shell (density adjustable) ---------- */
+  const BINS = 720;
+  const LAYERS = [
+    { R: .90, base: 1100, spread: .010, size: 1.0, alpha: .55, line: .16,
+      harm: [[2,.022,.3,1],[3,.016,1.9,-1],[5,.011,4.1,2],[8,.006,2.2,-3]] },
+    { R: .95, base: 1500, spread: .014, size: 1.0, alpha: .60, line: .20,
+      harm: [[2,.028,2.1,-1],[3,.022,.7,1],[4,.016,5.2,-2],[7,.009,3.3,3]] },
+    { R: 1.0, base: 2000, spread: .020, size: 1.2, alpha: .50, line: .28,
+      harm: [[2,.035,4.0,1],[3,.026,3.1,-1],[5,.018,.4,1],[6,.010,1.2,-2]] }
+  ];
+  LAYERS.forEach(L => { L.wob = new Float32Array(BINS); });
+  let DENS = 4, totalDots = 0;
+
+  function buildShell() {
+    totalDots = 0;
+    for (const L of LAYERS) {
+      const per = Math.round(L.base * DENS / 3);
+      L.bk = [];
+      for (let b = 0; b < 3; b++) {
+        const bin = new Uint16Array(per), sx = new Float32Array(per), co = new Float32Array(per), off = new Float32Array(per);
+        for (let i = 0; i < per; i++) {
+          const th = Math.random() * TAU;
+          const g = Math.random() + Math.random() + Math.random() - 1.5;
+          bin[i] = Math.floor(th / TAU * BINS) % BINS;
+          sx[i] = Math.sin(th); co[i] = Math.cos(th);
+          off[i] = g * L.spread * (1 + 1.8 * Math.pow(Math.abs(Math.sin(th)), 3));
+        }
+        L.bk.push({ n: per, bin, sx, co, off });
+        totalDots += per;
+      }
+    }
+  }
+
+  function drawShell(t, a) {
+    if (a <= .002) return;
+    const sc = (.86 + .14 * a) * mood.pull;
+    const ampNow = mood.amp * (1 + .5 * mood.listen * frameMic);
+    for (const L of LAYERS) {
+      for (let j = 0; j < BINS; j++) {
+        const th = j / BINS * TAU; let sum = 0;
+        for (const h of L.harm) sum += h[1] * Math.sin(h[0] * th + h[2] + h[3] * S.phase);
+        L.wob[j] = sum * ampNow;
+      }
+      ctx.strokeStyle = col(P.line, L.line * a); ctx.lineWidth = DPR * 1.2;
+      ctx.beginPath();
+      for (let j = 0; j <= BINS; j += 4) {
+        const jj = j % BINS, th = jj / BINS * TAU, r = (L.R + L.wob[jj]) * U * sc;
+        const x = cx + Math.sin(th) * r, y = cy - Math.cos(th) * r;
+        j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.closePath(); ctx.stroke();
+
+      ctx.globalCompositeOperation = 'lighter';
+      const s = DPR * L.size, wob = L.wob, R = L.R;
+      for (let b = 0; b < 3; b++) {
+        const B = L.bk[b];
+        ctx.fillStyle = col(P.main, [.3, .55, .85][b] * L.alpha * a);
+        for (let i = 0; i < B.n; i++) {
+          const r = (R + wob[B.bin[i]] + B.off[i]) * U * sc;
+          ctx.fillRect(cx + B.sx[i] * r, cy - B.co[i] * r, s, s);
+        }
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+
+  /* ---------- dummy metrics ---------- */
+  const M = { gpu: 5, vram: 7.4, temp: 41, cpu: 7, ram: 17.8, ctx: 2.4, tps: 0, vramMax: 12, ramMax: 32 };
+  const TGT = {
+    idle:      { gpu: 5,  temp: 41, cpu: 7,  ctx: 2.4, tps: 0 },
+    listening: { gpu: 14, temp: 43, cpu: 22, ctx: 2.4, tps: 0 },
+    thinking:  { gpu: 94, temp: 66, cpu: 38, ctx: 5.2, tps: 48 },
+    speaking:  { gpu: 71, temp: 68, cpu: 30, ctx: 5.8, tps: 52 },
+    claude:    { gpu: 9,  temp: 56, cpu: 18, ctx: 5.4, tps: 78 }
+  };
+  const NOISE = { gpu: 3, temp: .15, cpu: 2, ctx: .01, tps: 3 };
+    const LIVE = { on: false };
+  const PERF = { model: '', name: '', ttft: null, tps: null, ctxMax: 8 };
+  const WX = { items: [], alerts: [], alertKeys: new Set(), wi: 0 };
+  let GIT = [];
+  function renderGit() {
+    const els = { backend: $('vGitBack'), frontend: $('vGitFront') };
+    for (const r of GIT) {
+      const el = els[r.name];
+      if (!el) continue;
+      if (r.error) { el.textContent = r.error; continue; }
+      const br = r.branch.length > 14 ? r.branch.slice(0, 13) + '…' : r.branch;
+      const arrows = (r.ahead ? ' ↑' + r.ahead : '') + (r.behind ? ' ↓' + r.behind : '');
+      el.textContent = `${br}${arrows} · ${r.changed ? r.changed + ' changed' : 'clean'}`;
+    }
+  }
+  function stepMetrics(dt) {
+    if (LIVE.on) return;
+    const T = TGT[(state === 'thinking' && brain === 'claude') ? 'claude' : state];
+    for (const k in T) M[k] += (T[k] - M[k]) * Math.min(1, dt * 1.4) + (Math.random() - .5) * NOISE[k] * (T[k] > 1 ? 1 : .2);
+    M.gpu = clamp(M.gpu, 1, 100); M.tps = Math.max(0, M.tps); M.cpu = clamp(M.cpu, 1, 100);
+    M.vram = 7.4 + (state === 'thinking' || state === 'speaking' ? .6 : 0) * (brain === 'claude' ? 0 : 1) + Math.sin(performance.now() / 3000) * .03;
+    M.ram = 17.8 + Math.sin(performance.now() / 5000) * .12;
+  }
+
+  /* ---------- edge instruments ---------- */
+  const t0 = Date.now();
+  const EV = [];  // real calendar events can go here later
+
+  // top: heading-style time tape with event flags
+  const fmtMin = m => m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
+  const hhmm = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+  function drawTimeTape(a) {
+    const w = Math.min(innerWidth * .5, Math.max(240, innerWidth - 560)) * DPR;
+    const narrow = w / DPR < 420, y = (innerWidth < 700 ? 100 : 44) * DPR, span = narrow ? 240 : 360, ppm = w / span;
+    const now = Date.now(), d = new Date(now);
+    const mn = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60 + d.getMilliseconds() / 60000;
+    const g = ctx.createLinearGradient(cx - w / 2, 0, cx + w / 2, 0);
+    g.addColorStop(0, col(P.main, 0)); g.addColorStop(.5, col(P.main, .55 * a)); g.addColorStop(1, col(P.main, 0));
+    ctx.strokeStyle = g; ctx.lineWidth = DPR;
+    ctx.beginPath(); ctx.moveTo(cx - w / 2, y); ctx.lineTo(cx + w / 2, y); ctx.stroke();
+    ctx.font = `${11 * DPR}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let m = Math.floor((mn - span / 2) / 15) * 15; m <= mn + span / 2; m += 15) {
+      const x = cx + (m - mn) * ppm, f = 1 - Math.abs(x - cx) / (w / 2);
+      if (f <= 0) continue;
+      const major = m % 60 === 0, al = Math.pow(f, .7) * a;
+      ctx.strokeStyle = col(P.main, al * (major ? .9 : .5)); ctx.lineWidth = DPR;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + (major ? 12 : 6) * DPR); ctx.stroke();
+      if (major && (!narrow || m % 120 === 0)) {
+        const h = (((m / 60) % 24) + 24) % 24;
+        ctx.fillStyle = col(P.main, al * .8); ctx.fillText((h % 12 || 12) + (h < 12 ? ' AM' : ' PM'), x, y + 25 * DPR);
+      }
+    }
+    let next = null, cur = null;
+    const bar = ctx.createLinearGradient(cx - w / 2, 0, cx + w / 2, 0);
+    bar.addColorStop(0, col(P.main, 0)); bar.addColorStop(.5, col(P.main, .85 * a)); bar.addColorStop(1, col(P.main, 0));
+    for (const e of EV) {
+      const off = (e.t - now) / 60000, x = cx + off * ppm, f = 1 - Math.abs(x - cx) / (w / 2);
+      if (off > 0 && (!next || e.t < next.t)) next = e;
+      if (off <= 0 && e.end > now && (!cur || e.end > cur.end)) cur = e;
+      if (e.end > e.t) {  // duration bar: a block on the tape from start to end
+        const x0 = Math.max(x, cx - w / 2), x1 = Math.min(cx + (e.end - now) / 60000 * ppm, cx + w / 2);
+        if (x1 > x0) {
+          ctx.globalAlpha = e.end < now ? .45 : 1;
+          ctx.strokeStyle = bar; ctx.lineWidth = 3 * DPR;
+          ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+          ctx.globalAlpha = 1; ctx.lineWidth = DPR;
+        }
+      }
+      if (f <= 0) continue;
+      const al = Math.pow(f, .7) * a * (off < 0 ? .45 : 1);
+      ctx.strokeStyle = col(P.main, al); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 14 * DPR); ctx.stroke();
+      ctx.fillStyle = col(P.main, al); ctx.beginPath(); ctx.arc(x, y - 16 * DPR, 2.5 * DPR, 0, TAU); ctx.fill();
+      ctx.fillText(e.n, x, y - 28 * DPR);
+    }
+    ctx.fillStyle = col(P.white, a);
+    ctx.beginPath(); ctx.moveTo(cx, y + 2 * DPR); ctx.lineTo(cx - 5 * DPR, y - 7 * DPR); ctx.lineTo(cx + 5 * DPR, y - 7 * DPR); ctx.closePath(); ctx.fill();
+    let ly = y + 46 * DPR;
+    ctx.fillStyle = col(P.main, .8 * a);
+    if (cur) {
+      ctx.fillText(`Now: ${cur.n} · ${fmtMin(Math.max(1, Math.round((cur.end - now) / 60000)))} left`, cx, ly);
+      ly += 15 * DPR;
+    }
+    if (next) {
+      const m = Math.max(0, Math.round((next.t - now) / 60000));
+      const len = next.end > next.t ? ` · until ${hhmm(next.end)} (${fmtMin(Math.round((next.end - next.t) / 60000))})` : '';
+      ctx.fillText(`${next.n} in ${fmtMin(m)}${len}`, cx, ly);
+    }
+  }
+
+  // bottom: scrolling activity ticker
+  const tk = { items: [], queue: [], recent: [], rot: 0, idleSince: 0 };
+  const REPLAY_MS = 20000;  // quiet time before an old notice or status line drifts by again
+  let blocked = 1284;
+  const FILL = [
+    () => ['Pi-hole', `${blocked.toLocaleString()} blocked today`],
+    () => ['Git', 'main, 3 changed files'],
+    () => ['CI', 'last run passed'],
+    () => ['Dev servers', 'web and api up'],
+    () => ['Model', state === 'idle' ? 'idle, 7.4 GB resident' : 'active'],
+    () => ['Network', `${Math.round(12 + Math.random() * 7)} queries per min`],
+    () => { const n = EV.filter(e => e.t > Date.now()).sort((a, b) => a.t - b.t)[0]; return ['Next', n ? `${n.n} in ${Math.max(0, Math.round((n.t - Date.now()) / 60000))}m` : 'nothing scheduled']; }
+  ];
+  function drawTicker(dt, a) {
+    const W = cv.width, y = cv.height - 16 * DPR, gap = 46 * DPR, speed = 52 * DPR;
+    ctx.font = `${12 * DPR}px ${FONT}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    // when the lane has been empty a while, replay an old notice or show a live status line
+    const nowMs = performance.now();
+    if (tk.items.length || tk.queue.length) tk.idleSince = 0;
+    else if (!tk.idleSince) tk.idleSince = nowMs;
+    else if (nowMs - tk.idleSince > REPLAY_MS) {
+      tk.alertTurn = !tk.alertTurn;  // while a weather alert is active, it gets every other slot
+      if (WX.alerts.length && tk.alertTurn) tk.queue.push(WX.alerts[tk.ai = ((tk.ai || 0) + 1) % WX.alerts.length]);
+      const pool = tk.recent.length + STATUS.length;
+      for (let tries = 0; tries < pool && !tk.queue.length; tries++) {
+        const i = tk.rot++ % pool;
+        if (i < tk.recent.length) tk.queue.push(tk.recent[i]);
+        else { const s = STATUS[i - tk.recent.length](); if (s) tk.queue.push(s); }
+      }
+      tk.idleSince = 0;
+    }
+    for (let n = 0; n < 40; n++) {
+      const last = tk.items[tk.items.length - 1];
+      if (last && last.x + last.w + gap > W + 40 * DPR) break;
+      if (!tk.queue.length) break;  // only real events, no filler
+      const src = tk.queue.shift();
+      const it = { tm: (src[2] || new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })) + '  ', a: src[0] + '  ', b: src[1] };
+      it.w1 = ctx.measureText(it.tm).width; it.w2 = ctx.measureText(it.a).width;
+      it.w = it.w1 + it.w2 + ctx.measureText(it.b).width;
+      it.x = Math.max(last ? last.x + last.w + gap : 0, W + 10 * DPR);  // always enter from the right edge
+      tk.items.push(it);
+    }
+    for (const it of tk.items) it.x -= speed * dt;
+    while (tk.items.length && tk.items[0].x + tk.items[0].w < 0) tk.items.shift();
+    for (const it of tk.items) {
+      const f = clamp(Math.min(it.x + it.w, W - it.x) / (W * .14), 0, 1) * a;
+      if (f <= .01) continue;
+      ctx.fillStyle = col(P.main, .5 * f); ctx.fillText(it.tm, it.x, y);
+      ctx.fillStyle = col(P.white, .95 * f); ctx.fillText(it.a, it.x + it.w1, y);
+      ctx.fillStyle = col(P.main, .8 * f); ctx.fillText(it.b, it.x + it.w1 + it.w2, y);
+      ctx.fillStyle = col(P.main, .5 * f);
+      ctx.fillRect(it.x - gap / 2 - 2 * DPR, y - 2 * DPR, 4 * DPR, 4 * DPR);
+    }
+  }
+
+  function drawHud(dt, a) {
+    if (a <= .002) return;
+    // corner brackets
+    const b = 18 * DPR, m = 14 * DPR, W = cv.width, H = cv.height;
+    ctx.strokeStyle = col(P.main, .35 * a); ctx.lineWidth = 1.5 * DPR;
+    [[m, m, 1, 1], [W - m, m, -1, 1], [m, H - m, 1, -1], [W - m, H - m, -1, -1]].forEach(([x, y, sx, sy]) => {
+      ctx.beginPath(); ctx.moveTo(x + sx * b, y); ctx.lineTo(x, y); ctx.lineTo(x, y + sy * b); ctx.stroke();
+    });
+    drawTimeTape(a);
+    drawTicker(dt, a);
+  }
+
+  /* ---------- frame ---------- */
+  function drawBackground() {
+    const w = cv.width, h = cv.height;
+    ctx.fillStyle = '#01080a'; ctx.fillRect(0, 0, w, h);
+    const g = ctx.createRadialGradient(w * .3, h * .78, 0, w * .3, h * .78, Math.max(w, h) * .75);
+    g.addColorStop(0, col(P.bg, .6)); g.addColorStop(1, col(P.bg, 0));
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    const c = ctx.createRadialGradient(cx, cy, 0, cx, cy, U * 1.3);
+    c.addColorStop(0, col(P.glow, .12)); c.addColorStop(1, col(P.glow, 0));
+    ctx.fillStyle = c; ctx.fillRect(0, 0, w, h);
+  }
+  function draw(t, dt) {
+    frameMic = clamp((Math.abs(Math.sin(t * 6.3)) * .6 + Math.abs(Math.sin(t * 2.1 + 1)) * .4) * (.6 + .4 * Math.random()), 0, 1);
+    frameEnv = Math.abs(Math.sin(t * 7.4) * Math.sin(t * 2.6 + .5)) * (.7 + .3 * Math.random());
+    drawBackground();
+    drawHex(t, boot.seg);
+    drawSegments(t, boot.seg);
+    drawShell(t, boot.shell);
+    drawRipples(t);
+    drawSphere(t, boot.sphere);
+    drawHud(dt, boot.hud);
+  }
+
+  /* ---------- DOM readouts ---------- */
+  const segs = {};
+  document.querySelectorAll('.seg').forEach(s => {
+    const n = +s.dataset.n, els = [];
+    for (let i = 0; i < n; i++) els.push(s.appendChild(document.createElement('i')));
+    segs[s.id] = els;
+  });
+  const setSeg = (id, f) => { const els = segs[id], k = Math.round(clamp(f, 0, 1) * els.length); els.forEach((e, i) => e.classList.toggle('on', i < k)); };
+  let lastDom = 0, lastK = -1;
+  function updateDom(now) {
+    if (Math.abs(mood.k - lastK) > .003) {
+      lastK = mood.k; const c = rgb(P.main);
+      document.documentElement.style.setProperty('--rgb', `${c[0] | 0},${c[1] | 0},${c[2] | 0}`);
+    }
+    if (now - lastDom < 250) return;
+    lastDom = now;
+    if (Math.random() < .35) blocked++;
+    $('vVram').textContent = `${M.vram.toFixed(1)}/${Math.round(M.vramMax)} GB`; setSeg('sVram', M.vram / M.vramMax);
+    $('vRam').textContent = `${M.ram.toFixed(1)}/${Math.round(M.ramMax)} GB`;   setSeg('sRam', M.ram / M.ramMax);
+    $('vCpu').textContent = `${Math.round(M.cpu)}%`;        setSeg('sCpu', M.cpu / 100);
+    $('vCtx').textContent = `${M.ctx.toFixed(1)}k/${PERF.ctxMax}k`; setSeg('sCtx', M.ctx / PERF.ctxMax);
+        $('vTemp').textContent = `${Math.round(M.temp)}°C`;     setSeg('sTemp', (M.temp - 30) / 60);
+    const MS = { unloaded: 'UNLOADED', loading: 'LOADING', loaded: 'READY', generating: 'ACTIVE' };
+    $('vLlm').textContent = LIVE.on && PERF.model ? (MS[PERF.model] || PERF.model.toUpperCase()) + (PERF.name ? ' · ' + PERF.name : '') : '--';
+    $('vTtft').textContent = LIVE.on && PERF.ttft != null ? PERF.ttft.toFixed(2) + ' s' : '--';
+    $('vTps').textContent = LIVE.on && PERF.tps != null ? Math.round(PERF.tps) + ' tok/s' : '--';
+    const d = new Date();
+    $('clock').textContent = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+    $('date').textContent = d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+  }
+
+  /* ---------- state machine ---------- */
+  const PRE = {
+    idle:      { energy: .15, amp: 1,   pull: 1,   spin: 1,   scan: 0, speak: 0, listen: 0, think: 0 },
+    listening: { energy: .8,  amp: 1.8, pull: 1,   spin: 1,   scan: 0, speak: 0, listen: 1, think: 0 },
+    thinking:  { energy: .5,  amp: .7,  pull: .93, spin: 4,   scan: 1, speak: 0, listen: 0, think: 1 },
+    speaking:  { energy: .7,  amp: 1.5, pull: 1,   spin: 1.5, scan: 0, speak: 1, listen: 0, think: 0 }
+  };
+  const LBL = { idle: 'Standing by', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking' };
+  function setState(s, b = 'local') {
+    state = s; brain = b;
+    cv.setAttribute('aria-pressed', String(s === 'listening'));
+    $('stateLbl').textContent = LBL[s];
+    $('brainLbl').textContent = b === 'claude' ? 'Escalated to Claude · remote' : 'Local model · on-device';
+    anime.remove(mood);
+    anime(Object.assign({ targets: mood, duration: 1000, easing: 'easeInOutSine',
+      update: reduce ? () => draw(0, 0) : undefined }, PRE[s], { k: b === 'claude' ? 1 : 0 }));
+  }
+  const STATUS = [
+    () => PERF.model ? ['Model', (PERF.name || 'LLM') + ' ' + PERF.model] : null,
+    () => LIVE.on ? ['Context', `${M.ctx.toFixed(1)}k of ${Math.round(PERF.ctxMax)}k tokens`] : null,
+    () => PERF.tps != null ? ['Speed', `${Math.round(PERF.tps)} tok/s, first token ${PERF.ttft != null ? PERF.ttft.toFixed(1) + ' s' : '--'}`] : null,
+    () => WX.items.length ? WX.items[WX.wi++ % WX.items.length] : null,
+    () => { const n = EV.filter(e => e.t > Date.now()).sort((a, b) => a.t - b.t)[0]; return n ? ['Next', `${n.n} in ${Math.max(0, Math.round((n.t - Date.now()) / 60000))}m`] : null; },
+    () => GIT.some(r => !r.error) ? ['Git', GIT.filter(r => !r.error).map(r => `${r.name} ${r.branch}, ${r.changed ? r.changed + ' changed' : 'clean'}`).join(' · ')] : null
+  ];
+  const pushLog = (a, b) => {
+    const rec = [a, b, new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })];
+    tk.queue.push(rec);
+    if (!/error|failed|not reachable/i.test(a + ' ' + b)) {
+      tk.recent = tk.recent.filter(r => r[0] !== a);  // keep only the latest of each kind
+      tk.recent.push(rec);
+      if (tk.recent.length > 6) tk.recent.shift();
+    }
+  };
+
+  /* ---------- demo scenarios ---------- */
+  const SC = [
+    { you: 'Run the tests for the auth module and tell me what fails.',
+      log: [['Reading', 'auth/, 14 files'], ['Running', 'pytest tests/auth -q'], ['Parsing', '2 failed, 41 passed']],
+      reply: 'Two tests fail in token refresh. Both expect a UTC timestamp, but the helper returns local time. Want me to patch it and rerun?' },
+    { you: 'Summarize what changed in the last three commits.',
+      log: [['Reading', 'git log -3'], ['Diffing', '6 files, +212 / -48']],
+      reply: 'Mostly a refactor of the ingestion step, plus a new retry wrapper and updated tests. Nothing touches the public API.' },
+    { you: 'Design a caching layer for the ingestion pipeline and weigh the tradeoffs.', claude: true,
+      log: [['Reading', 'pipeline/, 22 files'], ['Local model', 'low confidence']],
+      clog: [['Calling', 'Claude, long context'], ['Received', 'plan with 3 options']],
+      reply: 'Three options: an in-process LRU, a Redis layer, or content-hash memoization on disk. I would start with memoization, since your jobs are idempotent and batch-shaped.' }
+  ];
+  let auto = !reduce, runId = 0;
+  const W = (ms, id) => new Promise(r => setTimeout(() => r(id === runId), ms));
+  async function typeInto(el, text, ms, id) {
+    for (let i = 1; i <= text.length; i++) { el.textContent = text.slice(0, i); if (!(await W(ms, id))) return false; }
+    return true;
+  }
+  async function play(sc, id) {
+    $('youTxt').textContent = ''; $('jvTxt').textContent = '';
+    setState('listening');
+    if (!(await W(700, id))) return;
+    if (!(await typeInto($('youTxt'), '\u201C' + sc.you + '\u201D', 30, id))) return;
+    if (!(await W(500, id))) return;
+    setState('thinking');
+    for (const [a, b] of sc.log) { pushLog(a, b); if (!(await W(900, id))) return; }
+    if (sc.claude) {
+      setState('thinking', 'claude'); pushLog('Escalating', 'handing off to Claude');
+      for (const [a, b] of sc.clog) { if (!(await W(1200, id))) return; pushLog(a, b); }
+      if (!(await W(800, id))) return;
+    }
+    setState('speaking', sc.claude ? 'claude' : 'local');
+    if (!(await typeInto($('jvTxt'), sc.reply, 22, id))) return;
+    if (!(await W(3000, id))) return;
+    setState('idle');
+    await W(3200, id);
+  }
+  async function demo(id) {
+    let i = 0;
+    while (auto && id === runId) await play(SC[i++ % SC.length], id);
+  }
+
+  /* ---------- controls ---------- */
+  const chips = [...document.querySelectorAll('#ctl button[data-s]')];
+  const mark = name => chips.forEach(b => b.classList.toggle('on', b.dataset.s === name));
+  function manual(name) {
+    auto = false; runId++; mark(name);
+    $('youTxt').textContent = ''; $('jvTxt').textContent = '';
+    if (name === 'claude') setState('thinking', 'claude'); else setState(name);
+  }
+  chips.forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.s === 'auto') { auto = true; runId++; mark('auto'); demo(runId); }
+    else manual(b.dataset.s);
+  }));
+  const LISTEN_URL = 'http://localhost:8000/listen';
+  function toggleListen() {
+    if (LIVE.on) fetch(LISTEN_URL, { method: 'POST' }).catch(() => pushLog('Mic', 'request failed'));
+    else manual(state === 'listening' ? 'idle' : 'listening');  // demo mode, no backend
+  }
+  cv.addEventListener('click', toggleListen);
+  cv.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleListen(); }
+  });
+
+   /* ---------- conversation log ---------- */
+  const chatLog = $('chatLog');
+  let curJv = null;
+  const nearBottom = () => chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 40;
+  function addMsg(role, text) {
+    const d = document.createElement('div'); d.className = 'msg ' + role;
+    const who = document.createElement('div'); who.className = 'who'; who.textContent = role === 'you' ? 'YOU' : 'JARVIS';
+    const body = document.createElement('div'); body.className = 'body'; body.textContent = text;
+    d.append(who, body);
+    const stick = nearBottom();
+    chatLog.appendChild(d);
+    while (chatLog.children.length > 60) chatLog.firstChild.remove();
+    if (stick) chatLog.scrollTop = chatLog.scrollHeight;
+    return body;
+  }
+  function appendMsg(body, text) {
+    const stick = nearBottom();
+    body.textContent += text;
+    if (stick) chatLog.scrollTop = chatLog.scrollHeight;
+  }
+  $('chatHead').addEventListener('click', () => {
+    const m = $('chatPanel').classList.toggle('min');
+    $('chatMin').textContent = m ? 'show' : 'hide';
+  });
+
+  /* ---------- push-to-talk key ---------- */
+  const keyBtn = $('keyBtn');
+  const HOTKEY_URL = 'http://localhost:8000/hotkey';
+  const prettyKey = k => k === 'media_play_pause' ? 'Play/Pause'
+    : k.length <= 3 ? k.toUpperCase() : k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+  const showKey = k => { keyBtn.textContent = 'Key: ' + prettyKey(k); };
+  function loadHotkey() { fetch(HOTKEY_URL).then(r => r.json()).then(d => showKey(d.key)).catch(() => {}); }
+  keyBtn.addEventListener('click', () => {
+    if (!LIVE.on) return;
+    keyBtn.textContent = 'Press a key...';
+    fetch(HOTKEY_URL + '/learn', { method: 'POST' }).catch(() => pushLog('Key', 'request failed'));
+  });
+
+    const handsBtn = $('handsBtn');
+  handsBtn.addEventListener('click', () => {
+    if (!LIVE.on) return;
+    fetch('http://localhost:8000/handsfree', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => { handsBtn.textContent = 'Hands-free: ' + (d.on ? 'on' : 'off'); handsBtn.classList.toggle('on', d.on); })
+      .catch(() => pushLog('Hands-free', 'request failed'));
+  });
+
+  /* ---------- live link (WebSocket) ---------- */
+  const WS_URL = new URLSearchParams(location.search).get('ws') || 'ws://localhost:8000/ws/hud';
+  let ws, retryTimer;
+  function stopDemo() { auto = false; runId++; mark(''); }
+  function onMsg(m) {
+    switch (m.type) {
+      case 'state':
+        if (!PRE[m.value]) break;
+        if (m.value === 'listening' && !m.followup) { $('youTxt').textContent = ''; $('jvTxt').textContent = ''; }
+        setState(m.value, m.brain === 'claude' ? 'claude' : 'local');
+        break;
+      case 'transcript':
+        if (m.role === 'you') { $('youTxt').textContent = '\u201C' + m.text + '\u201D'; $('jvTxt').textContent = ''; addMsg('you', m.text); curJv = null; }
+        else { $('jvTxt').textContent = m.text; curJv = addMsg('jarvis', m.text); }
+        break;
+      case 'reply': {
+        const el = $('jvTxt');
+        el.textContent = m.append ? el.textContent + m.text : m.text;
+        if (!m.append || !curJv) curJv = addMsg('jarvis', m.text);
+        else appendMsg(curJv, m.text);
+        break;
+      }
+      case 'model':
+        PERF.model = m.value || ''; if (m.name) PERF.name = m.name;
+        break;
+      case 'perf':
+        if (typeof m.ttft === 'number') PERF.ttft = m.ttft;
+        if (typeof m.tps === 'number') PERF.tps = m.tps;
+        break;
+      case 'weather': {
+        $('wxLine').textContent = m.line || '';
+        $('wxWind').textContent = m.wind || '';
+        WX.items = m.ticker || [];
+        WX.alerts = m.alerts || [];
+        for (const a of WX.alerts) if (!WX.alertKeys.has(a[0] + '|' + a[1])) tk.queue.push(a);  // new alert: show it right away
+        WX.alertKeys = new Set(WX.alerts.map(a => a[0] + '|' + a[1]));
+        break;
+      }
+      case 'git':
+        GIT = m.repos || [];
+        renderGit();
+        break;
+      case 'hotkey': showKey(m.value); break;
+      case 'calendar':
+        EV.splice(0, EV.length, ...(m.events || []).filter(e => !e.allDay));
+        break;
+      case 'log': pushLog(m.label || 'Event', m.detail || ''); break;
+      case 'metrics':
+        for (const k of ['vram', 'vramMax', 'ram', 'ramMax', 'cpu', 'temp', 'ctx']) if (typeof m[k] === 'number') M[k] = m[k];
+        if (typeof m.ctxMax === 'number') PERF.ctxMax = m.ctxMax;
+        break;
+    }
+  }
+  function connect() {
+    try { ws = new WebSocket(WS_URL); } catch (e) { return; }
+    ws.onopen = () => { LIVE.on = true; stopDemo(); setState('idle'); pushLog('Link', 'backend connected'); };
+    ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (_) {} };
+    ws.onclose = () => { LIVE.on = false; clearTimeout(retryTimer); retryTimer = setTimeout(connect, 3000); };
+    ws.onerror = () => ws.close();
+  }
+  connect();
+
+  /* ---------- chat box ---------- */
+  const API_URL = 'http://localhost:8000/chat';
+  const chatIn = $('chatIn');
+  let sending = false;
+  chatIn.addEventListener('keydown', async e => {
+    if (e.key !== 'Enter' || sending) return;
+    const text = chatIn.value.trim();
+    if (!text) return;
+    if (!LIVE.on) { pushLog('Chat', 'backend not connected'); return; }
+    sending = true; chatIn.value = ''; chatIn.disabled = true;
+    try {
+      const r = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!r.ok) pushLog('Chat', 'error ' + r.status);
+    } catch (err) {
+      pushLog('Chat', 'request failed');
+    }
+    sending = false; chatIn.disabled = false; chatIn.focus();
+  });
+
+  /* ---------- sizing ---------- */
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(innerWidth * DPR); cv.height = Math.round(innerHeight * DPR);
+    cx = cv.width / 2; cy = cv.height * .455;
+    U = Math.min(innerWidth * .28, innerHeight * .275) * DPR;
+    if (reduce) draw(0, 0);
+  }
+  addEventListener('resize', resize);
+  resize(); buildShell();
+
+  if (reduce) {
+    boot.sphere = boot.seg = boot.shell = boot.hud = 1;
+    document.querySelectorAll('.p, #ctl').forEach(e => e.style.opacity = 1);
+    updateDom(1e6); draw(0, 0); return;
+  }
+
+  /* ---------- anime.js: intro + endless loops ---------- */
+  anime({ targets: boot, sphere: 1, duration: 1400, easing: 'easeOutCubic' });
+  anime({ targets: boot, seg: 1, duration: 1800, delay: 500, easing: 'easeOutCubic' });
+  anime({ targets: boot, shell: 1, duration: 2400, delay: 900, easing: 'easeOutExpo' });
+  anime({ targets: boot, hud: 1, duration: 1800, delay: 1700, easing: 'easeOutCubic' });
+  anime({ targets: ['#tl', '#tr', '#bl', '#br', '#ctl'], opacity: [0, 1], duration: 1200, delay: anime.stagger(120, { start: 1800 }), easing: 'easeOutCubic' });
+
+  const loop = (prop, to, ms) => anime({ targets: S, [prop]: to, duration: ms, easing: 'linear', loop: true });
+  loop('segRot', -360, 140000); loop('hexRot', 360, 180000); loop('phase', TAU, 16000);
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    S.rotY = (S.rotY + dt * 12 * mood.spin) % 360;
+    stepMetrics(dt); updateDom(now); draw(now / 1000, dt);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

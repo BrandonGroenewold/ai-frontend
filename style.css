@@ -1,0 +1,67 @@
+:root { --rgb: 80,222,205; }
+html, body { margin:0; height:100%; overflow:hidden; background:#010708; }
+#c { position:fixed; inset:0; width:100%; height:100%; display:block; cursor:pointer; outline:none; }
+#c:focus-visible { outline:2px solid rgba(var(--rgb),.7); outline-offset:-4px; }
+
+/* ---------- corner panels ---------- */
+.p { position:fixed; pointer-events:none; color:rgba(var(--rgb),.92);
+  font:12px/1.55 "Bahnschrift","Segoe UI",system-ui,sans-serif; letter-spacing:.04em; font-variant-numeric:tabular-nums; }
+.box { border-left:1px solid rgba(var(--rgb),.4); padding-left:12px; }
+.r { border-left:0; border-right:1px solid rgba(var(--rgb),.4); padding:0 12px 0 0; text-align:right; }
+.dim { color:rgba(var(--rgb),.55); }
+.big { font-size:30px; line-height:1.15; font-weight:600; color:#eafffb; }
+.title { font-size:20px; font-weight:600; letter-spacing:.3em; color:#eafffb; }
+.row2 { display:flex; align-items:center; gap:8px; margin:3px 0; }
+.lb { min-width:38px; color:rgba(var(--rgb),.6); font-size:11px; letter-spacing:.14em; }
+.val { min-width:74px; text-align:right; white-space:nowrap; }
+.seg { display:inline-flex; gap:2px; }
+.seg i { display:block; width:8px; height:10px; background:rgba(var(--rgb),.16); }
+.seg i.on { background:rgba(var(--rgb),.95); box-shadow:0 0 6px rgba(var(--rgb),.6); }
+
+#tl, #tr, #bl, #br, #ctl { opacity:0; }  /* faded in by main.js */
+#tl { top:30px; left:36px; }
+#tr { top:30px; right:36px; }
+#bl { left:36px; bottom:52px; width:262px; }
+#br { right:36px; bottom:52px; width:262px; }
+
+/* ---------- captions ---------- */
+#tx { left:50%; transform:translateX(-50%); bottom:150px; width:min(640px,92vw); text-align:center; font-size:14px; line-height:1.5; min-height:60px; }
+#youTxt { color:rgba(var(--rgb),.7); }
+#jvTxt { color:#eafffb; display:flex; flex-direction:column; justify-content:flex-end; max-height:6em; overflow:hidden; }
+
+/* ---------- controls ---------- */
+#ctl { position:fixed; left:50%; transform:translateX(-50%); bottom:40px; width:min(520px,94vw);
+  display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center;
+  font:12px "Bahnschrift","Segoe UI",system-ui,sans-serif; color:rgba(var(--rgb),.85); }
+#ctl button { font:inherit; letter-spacing:.06em; color:inherit; background:transparent; cursor:pointer;
+  border:1px solid rgba(var(--rgb),.4); border-radius:999px; padding:4px 12px; }
+#ctl button:hover { background:rgba(var(--rgb),.12); }
+#ctl button.on { background:rgba(var(--rgb),.22); border-color:rgba(var(--rgb),.9); }
+
+#chat { flex-basis:100%; display:flex; margin-bottom:4px; }
+#chatIn { flex:1; font:inherit; font-size:13px; letter-spacing:.04em; color:#eafffb;
+  background:rgba(var(--rgb),.06); border:1px solid rgba(var(--rgb),.4); border-radius:999px;
+  padding:6px 16px; outline:none; }
+#chatIn::placeholder { color:rgba(var(--rgb),.45); }
+#chatIn:focus { border-color:rgba(var(--rgb),.9); background:rgba(var(--rgb),.12); }
+#chatIn:disabled { opacity:.5; }
+
+/* ---------- conversation panel ---------- */
+#chatPanel { position:fixed; right:36px; top:156px; bottom:160px; width:300px; display:flex; flex-direction:column;
+  font:12px/1.5 "Bahnschrift","Segoe UI",system-ui,sans-serif; letter-spacing:.03em; color:rgba(var(--rgb),.92);
+  border-right:1px solid rgba(var(--rgb),.4); padding-right:12px; animation:cfade 1.2s ease 2.2s both; }
+@keyframes cfade { from { opacity:0; } to { opacity:1; } }
+#chatHead { display:flex; justify-content:space-between; cursor:pointer; user-select:none;
+  color:rgba(var(--rgb),.6); font-size:11px; letter-spacing:.14em; margin-bottom:8px; }
+#chatLog { flex:1; overflow-y:auto; scrollbar-width:thin; scrollbar-color:rgba(var(--rgb),.35) transparent; }
+#chatPanel.min { bottom:auto; }
+#chatPanel.min #chatLog { display:none; }
+.msg { margin:0 0 10px; }
+.msg .who { font-size:10px; letter-spacing:.16em; color:rgba(var(--rgb),.55); }
+.msg .body { white-space:pre-wrap; word-wrap:break-word; color:#eafffb; }
+.msg.you .body { color:rgba(var(--rgb),.85); }
+
+/* ---------- small screens ---------- */
+@media (max-width:1320px) { #chatPanel { display:none; } }
+@media (max-width:900px) { #bl, #br { display:none; } }
+@media (max-width:640px) { #tl .dim, #tr .dim { display:none; } .big { font-size:22px; } #tl { left:24px; } #tr { right:24px; } }

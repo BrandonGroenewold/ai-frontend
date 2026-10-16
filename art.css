@@ -1,0 +1,66 @@
+/* art.css: the artifact panel and the layout shift that goes with it. Loaded by js/art.js. */
+:root { --colw: 380px; }
+
+#art { position:fixed; z-index:5; top:150px; bottom:60px; right:36px; left:calc(36px + var(--colw) + 22px);
+  display:flex; flex-direction:column; min-width:0;
+  background:rgba(2,14,16,.93); border:1px solid rgba(var(--rgb),.4); border-radius:4px;
+  box-shadow:0 0 28px rgba(var(--rgb),.12), inset 0 0 40px rgba(var(--rgb),.04);
+  font:12px/1.4 "Bahnschrift","Segoe UI",system-ui,sans-serif; letter-spacing:.04em; color:rgba(var(--rgb),.92);
+  animation:artIn .45s ease backwards; }
+#art[hidden], #art [hidden] { display:none !important; }
+#art.overlay { left:12px; right:12px; top:72px; bottom:12px; }
+@keyframes artIn { from { opacity:0; } to { opacity:1; } }
+
+#artDiv { position:absolute; left:-14px; top:0; bottom:0; width:12px; cursor:col-resize; touch-action:none; }
+#artDiv::after { content:""; position:absolute; left:5px; top:40%; bottom:40%; width:2px; border-radius:2px; background:rgba(var(--rgb),.35); }
+#artDiv:hover::after { background:rgba(var(--rgb),.9); }
+#art.overlay #artDiv, body.full #artDiv { display:none; }
+
+#artTabs { display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; padding:6px 6px 0; border-bottom:1px solid rgba(var(--rgb),.25); }
+.tab { display:flex; align-items:center; gap:8px; max-width:200px; padding:5px 10px; cursor:pointer; white-space:nowrap;
+  border:1px solid rgba(var(--rgb),.25); border-bottom:0; border-radius:4px 4px 0 0;
+  background:rgba(var(--rgb),.05); color:rgba(var(--rgb),.7); }
+.tab.on { background:rgba(var(--rgb),.16); color:#eafffb; border-color:rgba(var(--rgb),.6); }
+.tab span { overflow:hidden; text-overflow:ellipsis; }
+.tab b { font-weight:400; opacity:.6; }
+.tab b:hover { opacity:1; }
+.tab.busy::before { content:""; width:6px; height:6px; border-radius:50%; background:rgb(var(--rgb)); animation:artPulse 1s ease-in-out infinite; }
+@keyframes artPulse { 50% { opacity:.25; } }
+
+#artBar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid rgba(var(--rgb),.18); }
+#artBar .sp { flex:1; }
+.grp { display:inline-flex; gap:4px; align-items:center; }
+#art button { font:inherit; letter-spacing:.06em; color:inherit; background:transparent; cursor:pointer;
+  border:1px solid rgba(var(--rgb),.4); border-radius:999px; padding:3px 11px; }
+#art button:hover { background:rgba(var(--rgb),.12); }
+#art button.on { background:rgba(var(--rgb),.22); border-color:rgba(var(--rgb),.9); }
+#art button:disabled { opacity:.35; cursor:default; background:transparent; }
+#artVer { min-width:64px; text-align:center; color:rgba(var(--rgb),.7); }
+
+#artBody { position:relative; flex:1; min-height:0; }
+#artBody iframe { position:absolute; inset:0; width:100%; height:100%; border:0; background:#fff; transition:opacity .15s; }
+#artCode { position:absolute; inset:0; margin:0; padding:12px 14px; overflow:auto; white-space:pre; tab-size:4;
+  font:12px/1.55 Consolas,"Cascadia Mono",monospace; color:#d6fff8;
+  scrollbar-width:thin; scrollbar-color:rgba(var(--rgb),.35) transparent; }
+#artMap { position:absolute; inset:0; overflow:auto; padding:16px 18px; color:#eafffb; }
+#artMap h3 { margin:0 0 4px; font-size:16px; font-weight:600; }
+#artMap ol { padding-left:20px; line-height:1.7; }
+#artMsg { display:none; position:absolute; left:0; right:0; bottom:0; padding:6px 12px;
+  background:rgba(2,14,16,.92); border-top:1px solid rgba(var(--rgb),.3); }
+#artMsg.busy { display:block; color:rgb(var(--rgb)); }
+#artMsg.err { display:block; color:#ffd9a0; }
+
+/* artifact cards in the conversation log */
+.msg.artcard .card { display:flex; gap:8px; align-items:center; width:100%; box-sizing:border-box; font:inherit;
+  color:#eafffb; text-align:left; cursor:pointer; background:rgba(var(--rgb),.08);
+  border:1px solid rgba(var(--rgb),.4); border-radius:4px; padding:6px 10px; }
+.msg.artcard .card:hover { background:rgba(var(--rgb),.18); }
+.msg.artcard .card small { margin-left:auto; color:rgba(var(--rgb),.6); }
+
+/* work mode: chat on the left, artifact on the right, hub shrunk to an orb (js moves the orb) */
+body.work #tx, body.work #bl, body.work #br { display:none; }
+body.work #ctl { left:36px; transform:none; width:var(--colw); bottom:56px; justify-content:flex-start; }
+body.work #chatPanel { display:flex; left:36px; right:auto; top:310px; bottom:150px;
+  width:calc(var(--colw) - 13px); border-right:0; border-left:1px solid rgba(var(--rgb),.4); padding:0 0 0 12px; }
+body.work.full #art { left:36px; bottom:150px; }
+body.work.full #chatPanel { display:none; }
