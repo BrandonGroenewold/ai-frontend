@@ -22,24 +22,42 @@ el.innerHTML = `
     <button id="artCopy">Copy</button><button id="artDl">Download</button><button id="artFull">Expand</button>
   </div>
   <div id="artBody">
-    <iframe id="artFrame" sandbox="allow-scripts" title="Artifact preview"></iframe>
     <pre id="artCode"></pre>
     <div id="artMap"></div>
     <div id="artMsg"></div>
   </div>`;
 document.body.append(el);
-let frame = $('artFrame');
+const frames = new Map();   // "tabId:version" -> iframe, kept alive so switching tabs never reloads
+const MAX_FRAMES = 4;
+let frame = null;           // the iframe on screen
 const codeEl = $('artCode'), mapEl = $('artMap'), msgEl = $('artMsg'), tabsEl = $('artTabs');
 
 /* ---------- state ---------- */
 const tabs = [];   // {id, kind, title, lang, versions, ver, cache, view, building, buf, error, errs}
 let cur = null;
 const carded = new Set();
+const BOOT = Date.now();  // the backend replays the open artifact right after page load: that gets no new chat card
 let colw = 380;  // width of the chat column
 try { colw = clamp(+localStorage.getItem('artColw') || 380, 280, 560); } catch (_) {}
 const byId = id => tabs.find(t => t.id === id);
 const tab = () => byId(cur);
 const curText = t => t.building ? t.buf : (t.cache[t.ver] || '');
+const focus = t => { if (t && t.ver) send({ type: 'artifact_focus', id: t.id, v: t.ver }); };
+
+/* ---------- remember which tabs are open, so a refresh or restart brings them back ---------- */
+const TABS_KEY = 'artOpen';
+let restored = false;  // nothing is saved until the restore has finished, so a half-loaded panel can't overwrite the list
+function readSaved() {
+  try {
+    const j = JSON.parse(localStorage.getItem(TABS_KEY) || 'null');
+    return j && Array.isArray(j.ids) ? j : null;
+  } catch (_) { return null; }
+}
+const saved = readSaved();
+function saveTabs() {
+  if (!restored) return;
+  try { localStorage.setItem(TABS_KEY, JSON.stringify({ ids: tabs.map(t => t.id), cur })); } catch (_) {}
+}
 
 /* ---------- sandboxed preview: no network, no storage, errors reported to the panel ---------- */
 const CSP = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data:; font-src data:; media-src data:">';
@@ -55,43 +73,59 @@ function wrap(html) {
   return '<!doctype html><html><head>' + add + '</head><body>' + html + '</body></html>';
 }
 addEventListener('message', e => {
-  if (e.source !== frame.contentWindow || !e.data) return;
-  if (e.data.artReady) { frame.dataset.ready = '1'; return; }
+  if (!e.data) return;
+  const f = [...frames.values()].find(x => x.contentWindow === e.source);
+  if (!f) return;
+  if (e.data.artReady) { f.dataset.ready = '1'; return; }
   if (typeof e.data.artErr !== 'string') return;
-  const t = tab(); if (!t) return;
-  if (!t.errs.includes(e.data.artErr)) t.errs.push(e.data.artErr);
+  const [id, ver] = f.dataset.key.split(':'), t = byId(id);  // the page that reported, not whichever tab is open
+  if (!t || t.building || t.ver !== +ver) return;
+  if (!t.errs.includes(e.data.artErr)) {
+    t.errs.push(e.data.artErr);
+    send({ type: 'artifact_runtime_error', id: t.id, v: t.ver, error: e.data.artErr,
+           early: Date.now() - (+f.dataset.t || 0) < 4000 });
+  }
   if (t.errs.length > 5) t.errs.shift();
-  render();
+  if (t.id === cur) render();
 });
 
-/* a fresh iframe each time the preview changes, loaded once layout has settled.
-   If the page never reports in, load it again (twice at most). */
+/* One iframe per artifact version, kept alive while its tab is open (newest MAX_FRAMES only).
+   Switching tabs just shows another iframe: no reload, no white flash, and the app keeps its state.
+   A new iframe stays hidden until its page has loaded. If the page never reports in, it loads again (twice at most). */
 let mountTimer = 0;
-function mountFrame(key, html, tries = 0) {
+function dropFrame(key) {
+  const f = frames.get(key);
+  if (f) { f.remove(); frames.delete(key); }
+  if (f && frame === f) frame = null;
+}
+function useFrame(key, getHtml, tries = 0) {
   clearTimeout(mountTimer);
-  const old = frame, f = document.createElement('iframe');
+  const have = frames.get(key);
+  if (have && have.isConnected) { frames.delete(key); frames.set(key, have); frame = have; return; }
+  if (have) dropFrame(key);
+  const f = document.createElement('iframe');
   f.title = 'Artifact preview'; f.setAttribute('sandbox', 'allow-scripts');
-  f.dataset.key = key;
-  f.style.opacity = '0';  // invisible until its page has loaded; the old preview shows meanwhile
-  f.style.visibility = old.style.visibility;
-  f.style.pointerEvents = old.style.pointerEvents;
-  if (!old.dataset.key) old.style.visibility = 'hidden';  // nothing loaded yet: no empty white frame
-  old.after(f); frame = f;
-  const reveal = () => {
-    if (frame !== f) return;
-    f.style.opacity = '1';
-    setTimeout(() => el.querySelectorAll('#artBody iframe').forEach(x => { if (x !== f) x.remove(); }), 200);
-  };
+  f.dataset.key = key; f.dataset.t = String(Date.now());
+  f.style.opacity = '0'; f.style.visibility = 'hidden';
+  $('artBody').prepend(f);
+  frames.set(key, f); frame = f;
+  while (frames.size > MAX_FRAMES) {
+    const oldest = frames.keys().next().value;
+    if (oldest === key) break;
+    dropFrame(oldest);
+  }
+  const reveal = () => requestAnimationFrame(() => requestAnimationFrame(() => { f.style.opacity = '1'; }));
   setTimeout(() => {
-    if (frame !== f) return;
+    if (!f.isConnected) return;
     f.addEventListener('load', reveal, { once: true });
-    f.srcdoc = html;
+    f.srcdoc = getHtml();
   }, 30);
-  setTimeout(reveal, 1500);  // never stay invisible
+  setTimeout(() => { if (f.isConnected) f.style.opacity = '1'; }, 1500);  // never stay invisible
   mountTimer = setTimeout(() => {
-    if (frame !== f || f.dataset.ready || tries >= 2) return;
+    if (!f.isConnected || f.dataset.ready || tries >= 2) return;
     console.warn('artifact preview did not load, retrying');
-    mountFrame(key, html, tries + 1);
+    dropFrame(key);
+    useFrame(key, getHtml, tries + 1);
   }, 800);
 }
 
@@ -105,14 +139,94 @@ function renderTabs() {
     const x = document.createElement('b'); x.textContent = '\u00d7'; x.title = 'Close';
     x.addEventListener('click', e => { e.stopPropagation(); closeTab(t.id, true); });
     d.append(s, x);
-    d.addEventListener('click', () => { cur = t.id; render(); });
+    d.addEventListener('click', () => { cur = t.id; render(); focus(t); });
     tabsEl.append(d);
   }
+  saveTabs();
 }
 
 function setMsg(cls, text) { msgEl.className = cls; msgEl.textContent = text; }
 
-function renderMap(text) {
+/* ---------- route map: Leaflet (vendored in js/vendor), tiles come through the backend proxy ---------- */
+const maps = new Map();  // "id:version" -> {wrap, map, refit}: one Leaflet map per artifact version, kept alive
+const MAX_MAPS = 4;
+let leafLoad = null;
+function loadLeaflet() {
+  if (window.L) return Promise.resolve(window.L);
+  if (!leafLoad) leafLoad = new Promise((ok, no) => {
+    document.head.append(Object.assign(document.createElement('link'),
+      { rel: 'stylesheet', href: new URL('./vendor/leaflet.css', import.meta.url).href }));
+    document.head.append(Object.assign(document.createElement('style'),
+      { textContent: '.osm-dark{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9)}.leaflet-container{background:#04181a}' }));  // dark tiles; delete to get normal colors
+    const s = Object.assign(document.createElement('script'), { src: new URL('./vendor/leaflet.js', import.meta.url).href });
+    s.onload = () => ok(window.L);
+    s.onerror = () => { leafLoad = null; no(new Error('leaflet failed to load')); };
+    document.head.append(s);
+  });
+  return leafLoad;
+}
+function mapInfo(d) {
+  const f = document.createDocumentFragment();
+  const h = document.createElement('h3');
+  h.textContent = `${(d.from && d.from.name) || '?'} \u2192 ${(d.to && d.to.name) || '?'}`;
+  const sub = document.createElement('div'); sub.className = 'dim';
+  sub.textContent = `${((d.distance_m || 0) / 1609.34).toFixed(1)} mi \u00b7 ${Math.round((d.duration_s || 0) / 60)} min`
+    + (d.approx ? ' \u00b7 straight-line estimate' : '');
+  const ol = document.createElement('ol');
+  for (const s of d.steps || []) { const li = document.createElement('li'); li.textContent = s; ol.append(li); }
+  f.append(h, sub, ol);
+  return f;
+}
+function renderMap(text, key) {
+  for (const x of maps.values()) x.wrap.hidden = true;
+  const have = maps.get(key);
+  if (have) {  // already built: just show it
+    have.wrap.hidden = false;
+    if (have.map) { have.map.invalidateSize(); if (have.refit) { have.refit(); have.refit = null; } }
+    return;
+  }
+  const wrap = document.createElement('div'), entry = { wrap, map: null, refit: null };
+  maps.set(key, entry); mapEl.append(wrap);
+  while (maps.size > MAX_MAPS) {
+    const [k, old] = maps.entries().next().value;
+    if (k === key) break;
+    if (old.map) old.map.remove();
+    old.wrap.remove(); maps.delete(k);
+  }
+  let d;
+  try { d = JSON.parse(text); } catch (_) { wrap.textContent = 'Bad route data.'; return; }
+  const box = document.createElement('div');
+  box.style.cssText = 'height:clamp(240px,55vh,520px);border-radius:8px;overflow:hidden;margin-bottom:10px;isolation:isolate';
+  const warn = document.createElement('div'); warn.className = 'dim';
+  wrap.append(box, mapInfo(d), warn);
+  loadLeaflet().then(L => {
+    if (!wrap.isConnected) return;  // its tab was closed while it loaded
+    const m = entry.map = L.map(box);
+    m.attributionControl.setPrefix(false);
+    L.tileLayer(`${BASE}/network/tiles/{z}/{x}/{y}.png`, { maxZoom: 19, className: 'osm-dark',
+      attribution: '\u00a9 OpenStreetMap contributors' })
+      .on('tileerror', () => { warn.textContent = 'Some map tiles could not load (offline, or not cached yet).'; })
+      .addTo(m);
+    const pts = (d.route || []).filter(p => Array.isArray(p) && p.length === 2);
+    const line = pts.length > 1
+      ? L.polyline(pts, { color: '#50decd', weight: 4, opacity: .9, dashArray: d.approx ? '8 8' : undefined }).addTo(m) : null;
+    for (const [p, label, fill] of [[d.from, 'Start', '#eafffb'], [d.to, 'End', '#50decd']]) {
+      if (!p || !isFinite(p.lat) || !isFinite(p.lon)) continue;
+      const tip = document.createElement('span'); tip.textContent = `${label}: ${p.name}`;  // text, not HTML
+      L.circleMarker([p.lat, p.lon], { radius: 7, color: '#04181a', weight: 2, fillColor: fill, fillOpacity: 1 })
+        .bindTooltip(tip).addTo(m);
+    }
+    const fit = () => {
+      if (line) m.fitBounds(line.getBounds(), { padding: [24, 24] });
+      else if (d.to) m.setView([d.to.lat, d.to.lon], 12);
+    };
+    fit();
+    if (wrap.hidden) entry.refit = fit;  // built while another tab was showing: fit again when it appears
+    setTimeout(() => m.invalidateSize(), 60);
+  }).catch(() => { wrap.textContent = ''; wrap.append(mapInfo(d)); });
+}
+
+function renderMapText(text) {
   mapEl.textContent = '';
   let d;
   try { d = JSON.parse(text); } catch (_) { mapEl.textContent = 'Bad route data.'; return; }
@@ -122,7 +236,7 @@ function renderMap(text) {
   sub.textContent = `${((d.distance_m || 0) / 1609.34).toFixed(1)} mi \u00b7 ${Math.round((d.duration_s || 0) / 60)} min`;
   const ol = document.createElement('ol');
   for (const s of d.steps || []) { const li = document.createElement('li'); li.textContent = s; ol.append(li); }
-  const note = document.createElement('div'); note.className = 'dim'; note.textContent = 'Map tiles arrive in a later step.';
+  const note = document.createElement('div'); note.className = 'dim'; note.textContent = 'The map could not load, so this is the text version.';
   mapEl.append(h, sub, ol, note);
 }
 
@@ -137,23 +251,22 @@ function render() {
   $('artCopy').disabled = $('artDl').disabled = !text;
 
   // what to show: the streaming code while building, otherwise the chosen view
-  const mode = t.kind === 'map' && !t.building ? 'map'
-    : (!t.building && t.kind === 'html' && t.view === 'preview') ? 'frame' : 'code';
+  const mode = t.kind === 'map' && !t.building && text ? 'map'
+    : (!t.building && t.kind === 'html' && t.view === 'preview' && text) ? 'frame' : 'code';
   $('artViews').hidden = t.kind !== 'html';
   [...$('artViews').children].forEach(b => b.classList.toggle('on', b.dataset.v === (mode === 'frame' ? 'preview' : 'code')));
-  for (const x of el.querySelectorAll('#artBody iframe')) {
-    x.style.visibility = mode === 'frame' ? 'visible' : 'hidden';
-    x.style.pointerEvents = mode === 'frame' ? 'auto' : 'none';
+  if (mode === 'frame') useFrame(t.id + ':' + t.ver, () => wrap(text));
+  for (const x of frames.values()) {
+    const on = mode === 'frame' && x === frame;
+    x.style.visibility = on ? 'visible' : 'hidden';
+    x.style.pointerEvents = on ? 'auto' : 'none';
   }
   codeEl.style.display = mode === 'code' ? 'block' : 'none';
   mapEl.style.display = mode === 'map' ? 'block' : 'none';
-  if (mode === 'frame') {
-    const key = t.id + ':' + t.ver;  // same key = keep the running app (e.g. after flipping to Code and back)
-    if (frame.dataset.key !== key) mountFrame(key, wrap(text));
-  } else if (mode === 'code') {
+  if (mode === 'code') {
     codeEl.textContent = text;
     if (t.building) codeEl.scrollTop = codeEl.scrollHeight;
-  } else renderMap(text);
+  } else renderMap(text, t.id + ':' + t.ver);
 
   if (t.building) setMsg('busy', `Building\u2026 ${t.buf.length} characters`);
   else if (t.error) setMsg('err', t.error);
@@ -214,7 +327,10 @@ function closeTab(id, notify) {
   tabs.splice(i, 1);
   if (notify) send({ type: 'artifact_close', id });
   if (cur === id) cur = tabs.length ? tabs[Math.min(i, tabs.length - 1)].id : null;
-  if (!tabs.length) { clearTimeout(mountTimer); frame.srcdoc = ''; delete frame.dataset.key; delete frame.dataset.ready; }
+  focus(byId(cur));
+  for (const k of [...frames.keys()]) if (k.startsWith(id + ':')) dropFrame(k);
+  for (const [k, x] of [...maps]) if (k.startsWith(id + ':')) { if (x.map) x.map.remove(); x.wrap.remove(); maps.delete(k); }
+  if (!tabs.length) clearTimeout(mountTimer);
   layout(); render();
 }
 async function showVersion(t, v) {
@@ -226,7 +342,13 @@ async function showVersion(t, v) {
       t.cache[v] = (await r.json()).content;
     } catch (_) { t.error = 'Could not load that version.'; render(); return; }
   }
-  t.ver = v; t.error = null; t.errs = [];
+  t.ver = v; t.error = null; t.errs = []; focus(t);
+  if (t.kind === 'map') {  // a map is named after the route it shows
+    try {
+      const d = JSON.parse(t.cache[v]);
+      if (d.from && d.to) t.title = `${d.from.name} to ${d.to.name}`;
+    } catch (_) {}
+  }
   render();
 }
 function step(d) {
@@ -320,7 +442,8 @@ export function onArtifact(m) {
       Object.assign(x, { kind: m.kind, title: m.title, lang: m.lang || null, versions: m.versions || [m.version],
                          ver: m.version, building: false, buf: '', error: null, errs: [] });
       x.cache[m.version] = m.content;
-      cur = x.id; layout(); render(); addCard(x, m.version);
+      cur = x.id; layout(); render();
+      if (Date.now() - BOOT > 4000) addCard(x, m.version);
       break;
     }
     case 'artifact_error':
@@ -333,3 +456,39 @@ export function onArtifact(m) {
       break;
   }
 }
+
+/* ---------- bring back the tabs that were open ---------- */
+async function loadSaved(id) {
+  const mr = await fetch(`${BASE}/artifacts/${id}`);
+  if (mr.status === 404 || mr.status === 400) return null;  // deleted from disk: skip it
+  if (!mr.ok) throw new Error('backend not ready');
+  const meta = await mr.json();
+  const vs = (meta.versions || []).map(x => x.v);
+  if (!vs.length) return null;
+  const v = vs[vs.length - 1];
+  const cr = await fetch(`${BASE}/artifacts/${id}/v/${v}`);
+  if (!cr.ok) throw new Error('backend not ready');
+  return { meta, vs, v, content: (await cr.json()).content };
+}
+async function restoreTabs(tries = 0) {
+  const ids = saved ? saved.ids.filter(x => typeof x === 'string') : [];
+  let failed = false;
+  for (const id of ids) {
+    if (byId(id)) continue;  // the backend already sent this one
+    try {
+      const r = await loadSaved(id);
+      if (!r || byId(id)) continue;
+      const t = addTab({ id, kind: r.meta.kind, title: r.meta.title, lang: r.meta.lang });
+      Object.assign(t, { versions: r.vs, ver: r.v });
+      t.cache[r.v] = r.content;
+      carded.add(id + ':' + r.v);  // no chat card for a restored tab
+    } catch (_) { failed = true; }
+  }
+  if (failed && tries < 4) { setTimeout(() => restoreTabs(tries + 1), 2000); return; }  // backend still starting
+  const at = x => { const i = ids.indexOf(x.id); return i < 0 ? 1e9 : i; };
+  tabs.sort((a, b) => at(a) - at(b));  // same order as before
+  if (!cur || !byId(cur)) cur = saved && byId(saved.cur) ? saved.cur : (tabs.length ? tabs[tabs.length - 1].id : null);
+  restored = true;
+  if (tabs.length) { layout(); render(); try { focus(tab()); } catch (_) {} }
+}
+restoreTabs();
