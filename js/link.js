@@ -5,7 +5,7 @@ import { LIVE, M, PERF, WX, GIT, EV } from './data.js';
 import { PRE, setState } from './state.js';
 import { pushLog, notice } from './instruments.js';
 import { renderGit } from './readouts.js';
-import { clearCaptions, youSaid, jarvisSaid, jarvisReply, showKey, loadHotkey } from './ui.js';
+import { clearCaptions, youSaid, jarvisSaid, jarvisReply, showSources, showKey, loadHotkey } from './ui.js';
 import { onArtifact } from './art.js';
 
 const WS_URL = new URLSearchParams(location.search).get('ws') || 'ws://localhost:8000/ws/hud';
@@ -45,6 +45,7 @@ function onMsg(m) {
       renderGit();
       break;
 case 'hotkey': showKey(m.value); break;
+    case 'sources': showSources(m.items); break;
     case 'artifact_open': case 'artifact_chunk': case 'artifact_done':
     case 'artifact_error': case 'artifact_close':
       onArtifact(m); break;

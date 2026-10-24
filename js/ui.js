@@ -45,6 +45,22 @@ export function jarvisReply(text, append) {
   else appendMsg(curJv, text);
 }
 
+/* Where a web answer came from. Text only (never HTML), never spoken. */
+export function showSources(items) {
+  if (!Array.isArray(items) || !items.length) return;
+  const d = document.createElement('div'); d.className = 'msg sources';
+  const who = document.createElement('div'); who.className = 'who'; who.textContent = 'SOURCES';
+  const body = document.createElement('div'); body.className = 'body';
+  body.textContent = items.map(s => s.n + '. ' + s.title + ' (' + s.domain + ')').join('\n');
+  body.style.whiteSpace = 'pre-line'; body.style.opacity = '0.7'; body.style.fontSize = '0.85em';
+  d.append(who, body);
+  const stick = nearBottom();
+  chatLog.appendChild(d);
+  while (chatLog.children.length > 60) chatLog.firstChild.remove();
+  if (stick) chatLog.scrollTop = chatLog.scrollHeight;
+  curJv = null;
+}
+
 /* ---------- click the hub / press Enter or Space on it: toggle listening ---------- */
 function toggleListen() {
   if (LIVE.on) fetch(BASE + '/listen', { method: 'POST' }).catch(() => pushLog('Mic', 'request failed'));
