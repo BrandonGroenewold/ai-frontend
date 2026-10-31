@@ -15,16 +15,24 @@ const base = { cx: 0, cy: 0, U: 0 };
 /* where the hub sits while the artifact panel is open: an offset as a fraction of the canvas, plus a scale.
    art.js tweens this. 0, 0, 1 is the normal centered hub. */
 export const view = { x: 0, y: 0, s: 1 };
+let hubDx = 0; // how far the hub moves left to clear the CONVERSATION panel (canvas pixels)
 export function resizeView() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   cv.width = Math.round(innerWidth * DPR); cv.height = Math.round(innerHeight * DPR);
   base.cx = cv.width / 2; base.cy = cv.height * .455;
   base.U = Math.min(innerWidth * .28, innerHeight * .275) * DPR;
+  const chat = $('chatPanel'), pr = chat ? chat.getBoundingClientRect() : null;
+  hubDx = 0;
+  if (pr && pr.width > 0 && !chat.classList.contains('min')) {
+    const R = base.U / DPR * 1.15, gap = 16;     // R: guess at the hub's outer radius in screen pixels
+    const room = pr.left - gap - R;              // furthest right the hub's center may sit
+    hubDx = Math.min(0, Math.max(room, innerWidth * .3) - innerWidth / 2) * DPR;
+  }
   hubView(false);
 }
 /* hubView(true) moves cx, cy, U to the hub's placement; hubView(false) puts them back for everything else */
 export function hubView(on) {
-  cx = base.cx + (on ? view.x * cv.width : 0);
+  cx = base.cx + (on ? view.x * cv.width + hubDx : 0);
   cy = base.cy + (on ? view.y * cv.height : 0);
   U = base.U * (on ? view.s : 1);
 }

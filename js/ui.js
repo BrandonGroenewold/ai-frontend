@@ -1,6 +1,6 @@
 /* ui.js: everything you click or type into: the hub (listen toggle), push-to-talk key button,
    hands-free button, the conversation panel and the chat box. */
-import { $, cv } from './core.js';
+import { $, cv, resizeView } from './core.js';
 import { LIVE } from './data.js';
 import { getState, setState } from './state.js';
 import { pushLog } from './instruments.js';
@@ -30,6 +30,7 @@ function appendMsg(body, text) {
 $('chatHead').addEventListener('click', () => {
   const m = $('chatPanel').classList.toggle('min');
   $('chatMin').textContent = m ? 'show' : 'hide';
+  resizeView();
 });
 
 export function clearCaptions() { $('youTxt').textContent = ''; $('jvTxt').textContent = ''; }
