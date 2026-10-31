@@ -62,6 +62,7 @@ html, body { margin:0; height:100%; overflow:hidden; background:#010708; }
 .msg.you .body { color:rgba(var(--rgb),.85); }
 
 /* ---------- small screens ---------- */
-@media (max-width:1320px) { #chatPanel { display:none; } }
+@media (max-width:1320px) { #chatPanel { width:240px; right:20px; } }
+@media (max-width:899px) { #chatPanel { display:none; } }
 @media (max-width:900px) { #bl, #br { display:none; } }
 @media (max-width:640px) { #tl .dim, #tr .dim { display:none; } .big { font-size:22px; } #tl { left:24px; } #tr { right:24px; } }
