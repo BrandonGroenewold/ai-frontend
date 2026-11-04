@@ -45,6 +45,8 @@
 #artMap { position:absolute; inset:0; overflow:auto; padding:16px 18px; color:#eafffb; }
 #artMap h3 { margin:0 0 4px; font-size:16px; font-weight:600; }
 #artMap ol { padding-left:20px; line-height:1.7; }
+#artChart { display:none; position:absolute; inset:0; overflow:auto; padding:16px 18px; color:#eafffb; }
+#artChart h3 { margin:0 0 4px; font-size:16px; font-weight:600; }
 #artMsg { display:none; position:absolute; left:0; right:0; bottom:0; padding:6px 12px;
   background:rgba(2,14,16,.92); border-top:1px solid rgba(var(--rgb),.3); }
 #artMsg.busy { display:block; color:rgb(var(--rgb)); }

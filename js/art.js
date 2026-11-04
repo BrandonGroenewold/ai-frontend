@@ -24,13 +24,14 @@ el.innerHTML = `
   <div id="artBody">
     <pre id="artCode"></pre>
     <div id="artMap"></div>
+    <div id="artChart"></div>
     <div id="artMsg"></div>
   </div>`;
 document.body.append(el);
 const frames = new Map();   // "tabId:version" -> iframe, kept alive so switching tabs never reloads
 const MAX_FRAMES = 4;
 let frame = null;           // the iframe on screen
-const codeEl = $('artCode'), mapEl = $('artMap'), msgEl = $('artMsg'), tabsEl = $('artTabs');
+const codeEl = $('artCode'), mapEl = $('artMap'), chartEl = $('artChart'), msgEl = $('artMsg'), tabsEl = $('artTabs');
 
 /* ---------- state ---------- */
 const tabs = [];   // {id, kind, title, lang, versions, ver, cache, view, building, buf, error, errs}
@@ -240,6 +241,96 @@ function renderMapText(text) {
   mapEl.append(h, sub, ol, note);
 }
 
+/* ---------- charts: Chart.js (vendored in js/vendor), drawn from the JSON that show_chart saves ---------- */
+const charts = new Map();  // "id:version" -> {wrap, chart}: one chart per artifact version, kept alive
+const MAX_CHARTS = 4;
+const CHART_COLORS = ['#50decd', '#f2c14e', '#ff7a90', '#8ab4ff', '#b48cff', '#7be08a', '#ffa45c', '#e6f4f1'];
+let chartLoad = null;
+function loadChartJs() {
+  if (window.Chart) return Promise.resolve(window.Chart);
+  if (!chartLoad) chartLoad = new Promise((ok, no) => {
+    const s = Object.assign(document.createElement('script'),
+      { src: new URL('./vendor/chart.umd.min.js', import.meta.url).href });
+    s.onload = () => {
+      window.Chart.defaults.color = '#cfeee9';
+      window.Chart.defaults.borderColor = 'rgba(80,222,205,.15)';
+      ok(window.Chart);
+    };
+    s.onerror = () => { chartLoad = null; no(new Error('chart.js failed to load')); };
+    document.head.append(s);
+  });
+  return chartLoad;
+}
+function chartConfig(d) {
+  const type = ['line', 'bar', 'pie', 'doughnut', 'scatter'].includes(d.type) ? d.type : 'bar';
+  const round = type === 'pie' || type === 'doughnut';
+  const labels = Array.isArray(d.labels) ? d.labels : [];
+  const datasets = (Array.isArray(d.series) ? d.series : []).map((s, i) => {
+    const c = CHART_COLORS[i % CHART_COLORS.length];
+    if (type === 'scatter') {
+      return { label: s.name, backgroundColor: c, borderColor: c, pointRadius: 5,
+        data: (s.points || []).map(p => ({ x: p[0], y: p[1] })) };
+    }
+    if (round) {
+      return { label: s.name, data: s.values || [], borderColor: '#04181a', borderWidth: 2,
+        backgroundColor: labels.map((_, j) => CHART_COLORS[j % CHART_COLORS.length]) };
+    }
+    return { label: s.name, data: s.values || [], backgroundColor: c, borderColor: c,
+      borderWidth: 2, tension: .25, pointRadius: 3, fill: false };
+  });
+  const o = { responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+    plugins: { legend: { display: datasets.length > 1 || round, labels: { color: '#eafffb' } },
+      title: { display: !!d.title, text: String(d.title || ''), color: '#eafffb', font: { size: 15 } } } };
+  if (!round) {
+    const ax = t => ({ title: { display: !!t, text: String(t || '') },
+      grid: { color: 'rgba(80,222,205,.15)' }, ticks: { color: '#9fd8d0' } });
+    o.scales = { x: ax(d.x_label), y: ax(d.y_label) };
+  }
+  return { type, data: { labels, datasets }, options: o };
+}
+function chartText(d) {
+  const f = document.createDocumentFragment();
+  const h = document.createElement('h3'); h.textContent = d.title || 'Chart'; f.append(h);
+  for (const s of d.series || []) {
+    const p = document.createElement('div');
+    const vals = d.type === 'scatter'
+      ? (s.points || []).map(q => `(${q[0]}, ${q[1]})`)
+      : (s.values || []).map((v, i) => `${(d.labels || [])[i] ?? i + 1}: ${v}`);
+    p.textContent = `${s.name}: ${vals.join(', ')}`;
+    f.append(p);
+  }
+  const note = document.createElement('div'); note.className = 'dim';
+  note.textContent = 'The chart could not load, so this is the text version.';
+  f.append(note);
+  return f;
+}
+function renderChart(text, key) {
+  for (const x of charts.values()) x.wrap.hidden = true;
+  const have = charts.get(key);
+  if (have) {  // already built: just show it
+    have.wrap.hidden = false;
+    if (have.chart) have.chart.resize();
+    return;
+  }
+  const wrap = document.createElement('div'), entry = { wrap, chart: null };
+  charts.set(key, entry); chartEl.append(wrap);
+  while (charts.size > MAX_CHARTS) {
+    const [k, old] = charts.entries().next().value;
+    if (k === key) break;
+    if (old.chart) old.chart.destroy();
+    old.wrap.remove(); charts.delete(k);
+  }
+  let d;
+  try { d = JSON.parse(text); } catch (_) { wrap.textContent = 'Bad chart data.'; return; }
+  const box = document.createElement('div');
+  box.style.cssText = 'position:relative;height:clamp(260px,60vh,540px)';
+  const canvas = document.createElement('canvas'); box.append(canvas); wrap.append(box);
+  loadChartJs().then(Chart => {
+    if (!wrap.isConnected) return;  // its tab was closed while it loaded
+    entry.chart = new Chart(canvas, chartConfig(d));
+  }).catch(() => { wrap.textContent = ''; wrap.append(chartText(d)); });
+}
+
 function render() {
   renderTabs();
   const t = tab();
@@ -252,6 +343,7 @@ function render() {
 
   // what to show: the streaming code while building, otherwise the chosen view
   const mode = t.kind === 'map' && !t.building && text ? 'map'
+    : t.kind === 'chart' && !t.building && text ? 'chart'
     : (!t.building && t.kind === 'html' && t.view === 'preview' && text) ? 'frame' : 'code';
   $('artViews').hidden = t.kind !== 'html';
   [...$('artViews').children].forEach(b => b.classList.toggle('on', b.dataset.v === (mode === 'frame' ? 'preview' : 'code')));
@@ -263,10 +355,12 @@ function render() {
   }
   codeEl.style.display = mode === 'code' ? 'block' : 'none';
   mapEl.style.display = mode === 'map' ? 'block' : 'none';
+  chartEl.style.display = mode === 'chart' ? 'block' : 'none';
   if (mode === 'code') {
     codeEl.textContent = text;
     if (t.building) codeEl.scrollTop = codeEl.scrollHeight;
-  } else renderMap(text, t.id + ':' + t.ver);
+  } else if (mode === 'map') renderMap(text, t.id + ':' + t.ver);
+  else if (mode === 'chart') renderChart(text, t.id + ':' + t.ver);
 
   if (t.building) setMsg('busy', `Building\u2026 ${t.buf.length} characters`);
   else if (t.error) setMsg('err', t.error);
@@ -330,6 +424,7 @@ function closeTab(id, notify) {
   focus(byId(cur));
   for (const k of [...frames.keys()]) if (k.startsWith(id + ':')) dropFrame(k);
   for (const [k, x] of [...maps]) if (k.startsWith(id + ':')) { if (x.map) x.map.remove(); x.wrap.remove(); maps.delete(k); }
+  for (const [k, x] of [...charts]) if (k.startsWith(id + ':')) { if (x.chart) x.chart.destroy(); x.wrap.remove(); charts.delete(k); }
   if (!tabs.length) clearTimeout(mountTimer);
   layout(); render();
 }
@@ -343,6 +438,12 @@ async function showVersion(t, v) {
     } catch (_) { t.error = 'Could not load that version.'; render(); return; }
   }
   t.ver = v; t.error = null; t.errs = []; focus(t);
+  if (t.kind === 'chart') {  // a chart is named after its title
+    try {
+      const d = JSON.parse(t.cache[v]);
+      if (d.title) t.title = String(d.title).slice(0, 80);
+    } catch (_) {}
+  }
   if (t.kind === 'map') {  // a map is named after the route it shows
     try {
       const d = JSON.parse(t.cache[v]);
@@ -381,7 +482,7 @@ const EXT = { python: 'py', javascript: 'js', typescript: 'ts', html: 'html', cs
 function fileName(t) {
   const base = t.title.replace(/[^\w.\- ]+/g, '').trim().replace(/\s+/g, '-') || 'artifact';
   if (/\.\w{1,5}$/.test(base)) return base;
-  return base + '.' + (t.kind === 'html' ? 'html' : t.kind === 'map' ? 'json' : (EXT[t.lang] || 'txt'));
+  return base + '.' + (t.kind === 'html' ? 'html' : t.kind === 'map' || t.kind === 'chart' ? 'json' : (EXT[t.lang] || 'txt'));
 }
 $('artDl').onclick = () => {
   const t = tab(); if (!t) return;
