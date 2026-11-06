@@ -261,6 +261,42 @@ function loadChartJs() {
   });
   return chartLoad;
 }
+/* click a line to highlight it: it gets thicker and the other lines fade; click it again or empty space to reset */
+const PICK_PX = 14;  // how close, in pixels, a click must be to a line
+function fade(hex, a) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+function segDist(px, py, ax, ay, bx, by) {  // distance from a point to the line segment a-b
+  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+  const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+function lineUnder(chart, e) {  // index of the line nearest the pointer, or -1 when none is close enough
+  let best = -1, bd = PICK_PX;
+  chart.data.datasets.forEach((_, i) => {
+    if (!chart.isDatasetVisible(i)) return;
+    const pts = chart.getDatasetMeta(i).data;
+    for (let j = 0; j < pts.length; j++) {
+      const a = pts[j], b = pts[j + 1] || a;
+      const d = segDist(e.x, e.y, a.x, a.y, b.x, b.y);
+      if (d < bd) { bd = d; best = i; }
+    }
+  });
+  return best;
+}
+function paintHighlight(chart) {
+  chart._base = chart._base || chart.data.datasets.map(ds => ({ c: ds.borderColor, bg: ds.backgroundColor, w: ds.borderWidth }));
+  chart.data.datasets.forEach((ds, i) => {
+    const b = chart._base[i], on = chart._hi === undefined || chart._hi === i;
+    ds.borderColor = on ? b.c : fade(b.c, .2);
+    ds.backgroundColor = on ? b.bg : fade(b.bg, .2);
+    ds.borderWidth = chart._hi === i ? 4 : b.w;
+  });
+  chart.update('none');
+}
 function chartConfig(d) {
   const type = ['line', 'bar', 'pie', 'doughnut', 'scatter'].includes(d.type) ? d.type : 'bar';
   const round = type === 'pie' || type === 'doughnut';
@@ -286,6 +322,15 @@ function chartConfig(d) {
     const ax = t => ({ title: { display: !!t, text: String(t || '') },
       grid: { color: 'rgba(80,222,205,.15)' }, ticks: { color: '#9fd8d0' } });
     o.scales = { x: ax(d.x_label), y: ax(d.y_label) };
+  }
+  if (type === 'line') {  // click a line to highlight it
+    o.interaction = { mode: 'nearest', intersect: false };
+    o.onClick = (e, _els, chart) => {
+      const i = lineUnder(chart, e);
+      chart._hi = i < 0 || chart._hi === i ? undefined : i;
+      paintHighlight(chart);
+    };
+    o.onHover = (e, _els, chart) => { chart.canvas.style.cursor = lineUnder(chart, e) >= 0 ? 'pointer' : 'default'; };
   }
   return { type, data: { labels, datasets }, options: o };
 }
