@@ -3,7 +3,7 @@
 import { $, cv, resizeView } from './core.js';
 import { LIVE } from './data.js';
 import { getState, setState } from './state.js';
-import { pushLog } from './instruments.js';
+import { pushLog, QUIET } from './instruments.js';
 
 const BASE = 'http://localhost:8000';
 
@@ -92,6 +92,26 @@ handsBtn.addEventListener('click', () => {
     .then(r => r.json())
     .then(d => { handsBtn.textContent = 'Hands-free: ' + (d.on ? 'on' : 'off'); handsBtn.classList.toggle('on', d.on); })
     .catch(() => pushLog('Hands-free', 'request failed'));
+});
+
+/* ---------- quiet mode (Jarvis stops speaking; everything else works) ---------- */
+const quietBtn = document.createElement('button');
+quietBtn.id = 'quietBtn';
+quietBtn.className = handsBtn.className;  // same look as the Hands-free button
+handsBtn.after(quietBtn);
+export function showQuiet(on) {
+  QUIET.on = !!on;
+  quietBtn.textContent = 'Voice: ' + (on ? 'muted' : 'on');
+  quietBtn.classList.toggle('on', !!on);
+}
+export function loadQuiet() { fetch(BASE + '/quiet').then(r => r.json()).then(d => showQuiet(d.on)).catch(() => {}); }
+showQuiet(false);
+quietBtn.addEventListener('click', () => {
+  if (!LIVE.on) return;
+  fetch(BASE + '/quiet', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => showQuiet(d.on))
+    .catch(() => pushLog('Quiet', 'request failed'));
 });
 
 /* ---------- chat box ---------- */

@@ -89,8 +89,11 @@ function drawTimeTape(a) {
 const tk = { items: [], queue: [], recent: [], rot: 0, idleSince: 0 };
 const REPLAY_MS = 20000;  // quiet time before an old notice or status line drifts by again
 
+export const QUIET = { on: false };  // set by ui.js; while on, the ticker has a status line saying so
+
 // live status lines that fill quiet moments (each returns null when it has nothing to say)
 const STATUS = [
+  () => QUIET.on ? ['Voice', 'muted, replies are text only'] : null,
   () => PERF.model ? ['Model', (PERF.name || 'LLM') + ' ' + PERF.model] : null,
   () => LIVE.on ? ['Context', `${M.ctx.toFixed(1)}k of ${Math.round(PERF.ctxMax)}k tokens`] : null,
   () => PERF.tps != null ? ['Speed', `${Math.round(PERF.tps)} tok/s, first token ${PERF.ttft != null ? PERF.ttft.toFixed(1) + ' s' : '--'}`] : null,
