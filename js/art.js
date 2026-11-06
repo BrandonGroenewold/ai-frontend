@@ -266,7 +266,7 @@ function chartConfig(d) {
   const round = type === 'pie' || type === 'doughnut';
   const labels = Array.isArray(d.labels) ? d.labels : [];
   const datasets = (Array.isArray(d.series) ? d.series : []).map((s, i) => {
-    const c = CHART_COLORS[i % CHART_COLORS.length];
+    const c = (typeof s.color === 'string' && /^#[0-9a-f]{6}$/i.test(s.color)) ? s.color : CHART_COLORS[i % CHART_COLORS.length];
     if (type === 'scatter') {
       return { label: s.name, backgroundColor: c, borderColor: c, pointRadius: 5,
         data: (s.points || []).map(p => ({ x: p[0], y: p[1] })) };
@@ -276,7 +276,8 @@ function chartConfig(d) {
         backgroundColor: labels.map((_, j) => CHART_COLORS[j % CHART_COLORS.length]) };
     }
     return { label: s.name, data: s.values || [], backgroundColor: c, borderColor: c,
-      borderWidth: 2, tension: .25, pointRadius: 3, fill: false };
+      borderWidth: 2, tension: .25, pointRadius: s.dash ? 0 : 3, fill: false,
+      borderDash: s.dash && type === 'line' ? [6, 6] : [] };
   });
   const o = { responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
     plugins: { legend: { display: datasets.length > 1 || round, labels: { color: '#eafffb' } },
