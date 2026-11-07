@@ -49,7 +49,14 @@
 </div>
 
 <div id="ctl">
-  <div id="chat"><input id="chatIn" type="text" autocomplete="off" placeholder="Type a message and press Enter" aria-label="Message"></div>
+<div id="chat">
+  <div id="picStrip"></div>
+  <textarea id="chatIn" rows="1" autocomplete="off" placeholder="Type a message or attach a picture" aria-label="Message"></textarea>
+  <div id="chatBar">
+    <button id="picBtn" type="button" title="Attach a picture (or paste or drop one)" aria-label="Attach a picture">+</button>
+    <input id="picFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
+  </div>
+</div>
   <button id="keyBtn" title="Change the push-to-talk key">Key: ...</button>
   <button id="handsBtn" title="Toggle the Hey Jarvis wake word">Hands-free: off</button>
 </div>

@@ -4,6 +4,7 @@ import { $, cv, resizeView } from './core.js';
 import { LIVE } from './data.js';
 import { getState, setState } from './state.js';
 import { pushLog, QUIET } from './instruments.js';
+import { count as picCount, busy as picBusy, notify, openBig } from './pictures.js';
 
 const BASE = 'http://localhost:8000';
 
@@ -34,9 +35,39 @@ $('chatHead').addEventListener('click', () => {
 });
 
 export function clearCaptions() { $('youTxt').textContent = ''; $('jvTxt').textContent = ''; }
+let lastYou = null;  // the newest YOU bubble, so pictures can be added to it
 export function youSaid(text) {
-  $('youTxt').textContent = '\u201C' + text + '\u201D'; $('jvTxt').textContent = '';
+  const shown = text || (picCount() > 1 ? '[' + picCount() + ' pictures]' : '[picture]');  // a picture-only message has no words
+  $('youTxt').textContent = '\u201C' + shown + '\u201D'; $('jvTxt').textContent = '';
   addMsg('you', text); curJv = null;
+  lastYou = chatLog.lastElementChild;
+}
+
+/* thumbnails of the pictures a message used go into its YOU bubble; clicking one opens it larger */
+export function showUsed(used) {
+  if (!used.length || !lastYou) return;
+  const row = document.createElement('div'); row.className = 'pics';
+  used.forEach((p, i) => {
+    const im = document.createElement('img');
+    im.src = p.url; im.dataset.id = p.id;
+    im.dataset.name = used.length > 1 ? 'Picture ' + (i + 1) + ' of ' + used.length : 'Picture';
+    im.alt = im.dataset.name; im.title = 'Click to enlarge';
+    im.addEventListener('click', () => openBig(p.url));
+    row.appendChild(im);
+  });
+  const stick = nearBottom();
+  lastYou.insertBefore(row, lastYou.querySelector('.body'));
+  if (stick) chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+/* Jarvis has dropped these pictures: dim them and say so */
+export function dimPics(ids) {
+  for (const id of ids) {
+    chatLog.querySelectorAll('img[data-id="' + id + '"]').forEach(im => {
+      im.classList.add('gone');
+      im.title = im.dataset.name + ': Jarvis can no longer see this picture. Attach it again to ask more.';
+    });
+  }
 }
 export function jarvisSaid(text) { $('jvTxt').textContent = text; curJv = addMsg('jarvis', text); }
 export function jarvisReply(text, append) {
@@ -117,12 +148,34 @@ quietBtn.addEventListener('click', () => {
 /* ---------- chat box ---------- */
 const chatIn = $('chatIn');
 let sending = false;
+function fitChat() {  // grows with the text (CSS caps the height) and moves the + to the corner once the text wraps
+  const box = $('chat'), cs = getComputedStyle(chatIn);
+  const oneLine = parseFloat(cs.lineHeight) + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+  chatIn.style.height = 'auto';
+  if (!chatIn.value) box.classList.remove('tall');
+  else if (chatIn.scrollHeight > oneLine + 2) box.classList.add('tall');
+  chatIn.style.height = 'auto';
+  chatIn.style.height = chatIn.scrollHeight + 'px';
+}
+chatIn.addEventListener('input', fitChat);
+
+/* the captions above the box slide up by however much the box has grown, so it never covers them */
+const chatBox = $('chat'), picStrip = $('picStrip');
+let restH = 0;
+new ResizeObserver(() => {
+  const h = chatBox.offsetHeight;
+  if (!chatBox.classList.contains('tall') && !picStrip.children.length && !chatIn.value) restH = h;  // the resting size
+  document.documentElement.style.setProperty('--grow', Math.max(0, h - (restH || h)) + 'px');
+}).observe(chatBox);
 chatIn.addEventListener('keydown', async e => {
-  if (e.key !== 'Enter' || sending) return;
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;  // Shift+Enter adds a new line
+  e.preventDefault();
+  if (sending) return;
   const text = chatIn.value.trim();
-  if (!text) return;
-  if (!LIVE.on) { pushLog('Chat', 'backend not connected'); return; }
-  sending = true; chatIn.value = ''; chatIn.disabled = true;
+  if (!text && !picCount()) return;  // a picture alone is fine: Jarvis describes it
+  if (picBusy()) { notify('Picture is still uploading. Try again in a moment.'); return; }
+  if (!LIVE.on) { notify("Jarvis isn't connected. Start the backend and try again."); return; }
+  sending = true; chatIn.value = ''; fitChat(); chatIn.disabled = true;
   try {
     const r = await fetch(BASE + '/chat', {
       method: 'POST',

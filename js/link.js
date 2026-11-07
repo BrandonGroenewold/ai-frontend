@@ -5,8 +5,9 @@ import { LIVE, M, PERF, WX, GIT, EV } from './data.js';
 import { PRE, setState } from './state.js';
 import { pushLog, notice } from './instruments.js';
 import { renderGit } from './readouts.js';
-import { clearCaptions, youSaid, jarvisSaid, jarvisReply, showSources, showKey, loadHotkey, showQuiet, loadQuiet } from './ui.js';
+import { clearCaptions, youSaid, jarvisSaid, jarvisReply, showSources, showKey, loadHotkey, showQuiet, loadQuiet, showUsed, dimPics } from './ui.js';
 import { onArtifact } from './art.js';
+import { resetPics, takeUsed } from './pictures.js';
 
 const WS_URL = new URLSearchParams(location.search).get('ws') || 'ws://localhost:8000/ws/hud';
 let ws, retryTimer;
@@ -46,6 +47,8 @@ function onMsg(m) {
       break;
 case 'hotkey': showKey(m.value); break;
     case 'sources': showSources(m.items); break;
+    case 'pictures_used': showUsed(takeUsed(m.ids || [])); break;
+    case 'pictures_expired': dimPics(m.ids || []); break;
     case 'quiet': showQuiet(m.value); break;
     case 'artifact_open': case 'artifact_chunk': case 'artifact_done':
     case 'artifact_error': case 'artifact_close':
@@ -63,7 +66,7 @@ case 'hotkey': showKey(m.value); break;
 
 export function connect() {
   try { ws = new WebSocket(WS_URL); } catch (e) { return; }
-  ws.onopen = () => { LIVE.on = true; setState('idle'); pushLog('Link', 'backend connected'); loadHotkey(); loadQuiet(); };
+  ws.onopen = () => { LIVE.on = true; setState('idle'); pushLog('Link', 'backend connected'); resetPics(); loadHotkey(); loadQuiet(); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (_) {} };
   ws.onclose = () => { LIVE.on = false; clearTimeout(retryTimer); retryTimer = setTimeout(connect, 3000); };
   ws.onerror = () => ws.close();
