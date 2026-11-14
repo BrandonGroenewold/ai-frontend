@@ -5,7 +5,7 @@ import { LIVE, M, PERF, WX, GIT, EV } from './data.js';
 import { PRE, setState } from './state.js';
 import { pushLog, notice } from './instruments.js';
 import { renderGit } from './readouts.js';
-import { clearCaptions, youSaid, jarvisSaid, jarvisReply, showSources, showKey, loadHotkey, showQuiet, loadQuiet, showUsed, dimPics } from './ui.js';
+import { clearCaptions, youSaid, jarvisSaid, jarvisReply, showSources, showKey, loadHotkey, showQuiet, loadQuiet, showUsed, dimPics, showImageStatus, addImage, setImageKept, imagesGone } from './ui.js';
 import { onArtifact } from './art.js';
 import { resetPics, takeUsed } from './pictures.js';
 
@@ -49,6 +49,10 @@ case 'hotkey': showKey(m.value); break;
     case 'sources': showSources(m.items); break;
     case 'pictures_used': showUsed(takeUsed(m.ids || [])); break;
     case 'pictures_expired': dimPics(m.ids || []); break;
+    case 'image_status': showImageStatus(m.text || ''); break;
+    case 'image_done': addImage(m.name || ''); break;
+    case 'image_kept': setImageKept(m.name || '', !!m.kept); break;
+    case 'image_gone': imagesGone(m.names || []); break;
     case 'quiet': showQuiet(m.value); break;
     case 'artifact_open': case 'artifact_chunk': case 'artifact_done':
     case 'artifact_error': case 'artifact_close':

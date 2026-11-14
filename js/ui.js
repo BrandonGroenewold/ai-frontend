@@ -69,6 +69,83 @@ export function dimPics(ids) {
     });
   }
 }
+/* ---------- pictures Jarvis draws: one JARVIS bubble holds the status line and the thumbnails ---------- */
+let imgBubble = null;  // the bubble for the drawing in progress
+function ensureImgBubble() {
+  if (imgBubble) return imgBubble;
+  const d = document.createElement('div'); d.className = 'msg jarvis';
+  const who = document.createElement('div'); who.className = 'who'; who.textContent = 'JARVIS';
+  const pics = document.createElement('div'); pics.className = 'drawn';
+  const status = document.createElement('div'); status.className = 'body'; status.hidden = true;
+  d.append(who, pics, status);
+  const stick = nearBottom();
+  chatLog.appendChild(d);
+  while (chatLog.children.length > 60) chatLog.firstChild.remove();
+  if (stick) chatLog.scrollTop = chatLog.scrollHeight;
+  curJv = null;
+  imgBubble = { d, pics, status };
+  return imgBubble;
+}
+export function showImageStatus(text) {
+  if (text) {
+    const b = ensureImgBubble();
+    b.status.hidden = false; b.status.textContent = text;
+    if (nearBottom()) chatLog.scrollTop = chatLog.scrollHeight;
+    return;
+  }
+  if (!imgBubble) return;  // drawing is over: drop the status line, and the whole bubble if nothing was drawn
+  imgBubble.status.remove();
+  if (!imgBubble.pics.children.length) imgBubble.d.remove();
+  imgBubble = null;
+}
+const drawn = new Map();  // picture name -> { im, keep, setKept }, so words can update the buttons
+export function addImage(name) {
+  const b = ensureImgBubble();
+  const src = BASE + '/image/' + encodeURIComponent(name);
+  const cell = document.createElement('div'); cell.className = 'drawn1';
+  const im = document.createElement('img');
+  im.src = src; im.alt = 'Picture Jarvis drew'; im.title = 'Click to enlarge';
+  im.addEventListener('click', () => openBig(src));
+  const stick = nearBottom();
+  im.addEventListener('load', () => { if (stick) chatLog.scrollTop = chatLog.scrollHeight; });
+  const keep = document.createElement('button');
+  keep.type = 'button'; keep.className = 'keepBtn'; keep.textContent = 'Keep';
+  let isKept = false;
+  const setKept = on => {  // also called when you keep or un-keep by voice or typing
+    isKept = on;
+    keep.textContent = on ? 'Kept \u2713' : 'Keep';
+    keep.classList.toggle('kept', on);
+    keep.title = on ? 'Kept. Click to undo.' : 'Keep this picture';
+  };
+  setKept(false);
+  drawn.set(name, { im, keep, setKept });
+  keep.addEventListener('click', async () => {
+    keep.disabled = true;
+    const want = !isKept;  // clicking a kept picture un-keeps it
+    try {
+      const r = await fetch(BASE + (want ? '/image/keep' : '/image/unkeep'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+      });
+      const d = await r.json();
+      if (d.ok) setKept(want);
+      else notify("Couldn't " + (want ? 'keep' : 'un-keep') + ' that picture.');
+    } catch (err) {
+      pushLog('Image', 'keep request failed');
+    }
+    keep.disabled = false;
+  });
+  cell.append(im, keep); b.pics.appendChild(cell);
+}
+
+export function setImageKept(name, on) { const d = drawn.get(name); if (d) d.setKept(on); }
+export function imagesGone(names) {  // these files were deleted: dim them and stop the Keep button
+  for (const name of names) {
+    const d = drawn.get(name);
+    if (!d) continue;
+    d.im.classList.add('gone'); d.im.title = 'This picture was deleted';
+    d.keep.disabled = true; d.keep.textContent = 'Deleted';
+  }
+}
 export function jarvisSaid(text) { $('jvTxt').textContent = text; curJv = addMsg('jarvis', text); }
 export function jarvisReply(text, append) {
   const el = $('jvTxt');

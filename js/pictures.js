@@ -106,15 +106,55 @@ export function takeUsed(ids) {
 export function resetPics() { held.length = 0; render(); }
 
 /* ---------- click a picture to see it larger ---------- */
-let box = null;
+let box = null, big = null;
+let zoom = 1, panX = 0, panY = 0;
+function paintBig() {
+  big.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
+  big.style.cursor = zoom > 1 ? 'grab' : 'zoom-in';
+}
+function zoomAt(k, cx, cy) {  // zoom to k, keeping the point under (cx, cy) (relative to the centre) where it is
+  k = Math.min(8, Math.max(1, k));
+  panX = cx - (cx - panX) * (k / zoom); panY = cy - (cy - panY) * (k / zoom);
+  zoom = k;
+  if (zoom === 1) { panX = 0; panY = 0; }
+  paintBig();
+}
 export function openBig(url) {
   if (!box) {
     box = document.createElement('div'); box.id = 'picBox';
-    box.addEventListener('click', () => box.classList.remove('on'));
+    big = document.createElement('img'); big.draggable = false;
+    const x = document.createElement('span'); x.id = 'picClose'; x.textContent = '\u00D7'; x.title = 'Close (Esc)';
+    x.setAttribute('role', 'button');
+    x.addEventListener('click', () => box.classList.remove('on'));
+    box.append(big, x);
     document.body.appendChild(box);
+    box.addEventListener('click', e => { if (e.target === box) box.classList.remove('on'); });  // only the dark area closes it
+    const centre = e => { const r = box.getBoundingClientRect(); return [e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2]; };
+    box.addEventListener('wheel', e => {
+      e.preventDefault();  // zoom the picture, never the page behind it (this also catches Ctrl+wheel)
+      const [cx, cy] = centre(e);
+      zoomAt(zoom * Math.exp(-e.deltaY * 0.002), cx, cy);
+    }, { passive: false });
+    let drag = null;
+    big.addEventListener('pointerdown', e => {
+      drag = { sx: e.clientX, sy: e.clientY, x: e.clientX - panX, y: e.clientY - panY, moved: false };
+      big.setPointerCapture(e.pointerId);
+    });
+    big.addEventListener('pointermove', e => {
+      if (!drag) return;
+      if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return;  // still just a click
+      drag.moved = true;
+      if (zoom > 1) { panX = e.clientX - drag.x; panY = e.clientY - drag.y; big.style.cursor = 'grabbing'; paintBig(); }
+    });
+    big.addEventListener('pointerup', e => {
+      const d = drag; drag = null;
+      if (d && !d.moved) { const [cx, cy] = centre(e); zoomAt(zoom > 1 ? 1 : 2.5, cx, cy); }  // a click toggles the zoom
+      else paintBig();
+    });
+    big.addEventListener('pointercancel', () => { drag = null; paintBig(); });
   }
-  box.textContent = '';
-  const im = document.createElement('img'); im.src = url; box.appendChild(im);
+  zoom = 1; panX = 0; panY = 0;
+  big.src = url; paintBig();
   box.classList.add('on');
 }
 addEventListener('keydown', e => { if (e.key === 'Escape' && box) box.classList.remove('on'); });
