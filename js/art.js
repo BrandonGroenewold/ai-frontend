@@ -377,6 +377,7 @@ function renderChart(text, key) {
   }).catch(() => { wrap.textContent = ''; wrap.append(chartText(d)); });
 }
 
+const countText = s => s ? `~${Math.round(s.length / 3.5).toLocaleString()} tokens \u00b7 ${s.length.toLocaleString()} chars` : '';  // an estimate
 function render() {
   renderTabs();
   const t = tab();
@@ -408,10 +409,12 @@ function render() {
   } else if (mode === 'map') renderMap(text, t.id + ':' + t.ver);
   else if (mode === 'chart') renderChart(text, t.id + ':' + t.ver);
 
-  if (t.building) setMsg('busy', `Building\u2026 ${t.buf.length} characters`);
+  if (t.building) setMsg('busy', `Building\u2026 ${countText(t.buf)}`);
   else if (t.error) setMsg('err', t.error);
   else if (t.errs.length) setMsg('err', 'Error in the app: ' + t.errs[t.errs.length - 1]);
+  else if (mode === 'code' && (t.kind === 'html' || t.kind === 'code')) setMsg('info', countText(text));
   else setMsg('', '');
+  codeEl.style.paddingBottom = msgEl.className ? '34px' : '';  // keep the last code line clear of the status bar
 }
 
 /* ---------- layout: chat left, artifact right, hub shrinks to an orb ---------- */
@@ -581,7 +584,7 @@ export function onArtifact(m) {
       t.buf += m.text;
       if (t.id === cur && t.building) {
         codeEl.textContent = t.buf; codeEl.scrollTop = codeEl.scrollHeight;
-        msgEl.textContent = `Building\u2026 ${t.buf.length} characters`;
+        msgEl.textContent = `Building\u2026 ${countText(t.buf)}`;
       }
       break;
     case 'artifact_done': {

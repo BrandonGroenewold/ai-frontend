@@ -51,6 +51,7 @@
   background:rgba(2,14,16,.92); border-top:1px solid rgba(var(--rgb),.3); }
 #artMsg.busy { display:block; color:rgb(var(--rgb)); }
 #artMsg.err { display:block; color:#ffd9a0; }
+#artMsg.info { display:block; color:rgba(var(--rgb),.65); font-size:11px; }
 
 /* artifact cards in the conversation log */
 .msg.artcard .card { display:flex; gap:8px; align-items:center; width:100%; box-sizing:border-box; font:inherit;
@@ -62,7 +63,7 @@
 /* work mode: chat on the left, artifact on the right, hub shrunk to an orb (js moves the orb) */
 body.work #tx, body.work #bl, body.work #br { display:none; }
 body.work #ctl { left:36px; transform:none; width:var(--colw); bottom:56px; justify-content:flex-start; }
-body.work #chatPanel { display:flex; left:36px; right:auto; top:310px; bottom:150px;
+body.work #chatPanel { display:flex; left:36px; right:auto; top:310px; bottom:calc(56px + var(--ctlh, 94px) + 10px);
   width:calc(var(--colw) - 13px); border-right:0; border-left:1px solid rgba(var(--rgb),.4); padding:0 0 0 12px; }
-body.work.full #art { left:36px; bottom:150px; }
+body.work.full #art { left:36px; bottom:calc(56px + var(--ctlh, 94px) + 10px); }
 body.work.full #chatPanel { display:none; }

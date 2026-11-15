@@ -154,6 +154,18 @@ export function jarvisReply(text, append) {
   else appendMsg(curJv, text);
 }
 
+/* "Show reasoning": Deep Reasoner's thinking, folded under its reply. Text only (never HTML), never spoken. */
+export function showReasoning(text) {
+  if (!curJv || !text) return;
+  const d = document.createElement('details'); d.className = 'think';
+  const s = document.createElement('summary'); s.textContent = 'Show reasoning';
+  const b = document.createElement('div'); b.className = 'thinkBody'; b.textContent = text;
+  d.addEventListener('toggle', () => { s.textContent = d.open ? 'Hide reasoning' : 'Show reasoning'; });
+  d.append(s, b);
+  curJv.appendChild(d);
+  if (nearBottom()) chatLog.scrollTop = chatLog.scrollHeight;
+}
+
 /* Where a web answer came from. Text only (never HTML), never spoken. */
 export function showSources(items) {
   if (!Array.isArray(items) || !items.length) return;
@@ -224,6 +236,72 @@ quietBtn.addEventListener('click', () => {
 
 /* ---------- chat box ---------- */
 const chatIn = $('chatIn');
+
+/* ---------- model role button + menu (General / Fast Coder / Deep Reasoner) ---------- */
+const basePlaceholder = chatIn.placeholder;
+const roleBtn = document.createElement('button');
+roleBtn.id = 'roleBtn';
+roleBtn.className = handsBtn.className;  // same look as the Key, Hands-free and Voice buttons
+quietBtn.after(roleBtn);
+const roleMenu = document.createElement('div');
+roleMenu.id = 'roleMenu';
+roleMenu.hidden = true;
+let roles = [], roleNow = '', roleLabel = 'General', roleLoading = false, roleBusy = false;
+function drawRoleBtn() {
+  roleBtn.textContent = 'Model: ' + (roleLoading ? 'Loading...' : roleLabel);
+  roleBtn.classList.toggle('off', roleLoading || roleBusy);
+}
+function closeRoleMenu() { roleMenu.hidden = true; }
+function openRoleMenu() {
+  if (roleLoading || roleBusy || !roles.length) return;
+  const p = roleBtn.offsetParent || document.body;
+  if (roleMenu.parentNode !== p) p.appendChild(roleMenu);
+  roleMenu.innerHTML = '';
+  for (const r of roles) {
+    const it = document.createElement('button');
+    it.type = 'button';
+    it.className = 'roleItem' + (r.id === roleNow ? ' on' : '');
+    it.innerHTML = '<span></span><small></small>';
+    it.firstChild.textContent = r.label;
+    it.lastChild.textContent = r.hint || '';
+    it.addEventListener('click', () => { closeRoleMenu(); pickRole(r.id); });
+    roleMenu.appendChild(it);
+  }
+  roleMenu.hidden = false;
+  roleMenu.style.right = (p.clientWidth - roleBtn.offsetLeft - roleBtn.offsetWidth) + 'px';
+  roleMenu.style.bottom = (p.clientHeight - roleBtn.offsetTop + 6) + 'px';
+}
+function pickRole(id) {
+  if (id === roleNow) return;
+  fetch(BASE + '/role', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: id })
+  })
+    .then(r => { if (!r.ok) throw new Error(r.status); })
+    .catch(() => { pushLog('Role', 'switch failed'); loadRoles(); });  // show the real role again
+}
+roleBtn.addEventListener('click', e => { e.stopPropagation(); if (roleMenu.hidden) openRoleMenu(); else closeRoleMenu(); });
+document.addEventListener('click', closeRoleMenu);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRoleMenu(); });
+export function setRoleBusy(on) { roleBusy = on; if (on) closeRoleMenu(); drawRoleBtn(); }  // dimmed while Jarvis is thinking, speaking or listening
+export function showRole(m) {  // the backend says which role is active and whether its model is still loading
+  if (m.value) roleNow = m.value;
+  if (m.label) roleLabel = m.label;
+  roleLoading = !!m.loading;
+  closeRoleMenu();
+  chatIn.disabled = roleLoading;  // no sending while a model loads
+  chatIn.placeholder = roleLoading ? 'Loading ' + (m.label || 'model') + '...' : basePlaceholder;
+  drawRoleBtn();
+}
+export function loadRoles() {
+  fetch(BASE + '/role').then(r => r.json()).then(d => {
+    roles = d.roles || [];
+    showRole({ value: d.current, loading: d.loading, label: d.label });
+  }).catch(() => {});
+}
+drawRoleBtn();
+
 let sending = false;
 function fitChat() {  // grows with the text (CSS caps the height) and moves the + to the corner once the text wraps
   const box = $('chat'), cs = getComputedStyle(chatIn);
@@ -244,6 +322,9 @@ new ResizeObserver(() => {
   if (!chatBox.classList.contains('tall') && !picStrip.children.length && !chatIn.value) restH = h;  // the resting size
   document.documentElement.style.setProperty('--grow', Math.max(0, h - (restH || h)) + 'px');
 }).observe(chatBox);
+new ResizeObserver(() => {  // the chat panel in work mode stops above the controls, however tall they get
+  document.documentElement.style.setProperty('--ctlh', $('ctl').offsetHeight + 'px');
+}).observe($('ctl'));
 chatIn.addEventListener('keydown', async e => {
   if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;  // Shift+Enter adds a new line
   e.preventDefault();

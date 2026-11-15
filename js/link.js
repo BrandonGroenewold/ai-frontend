@@ -5,7 +5,7 @@ import { LIVE, M, PERF, WX, GIT, EV } from './data.js';
 import { PRE, setState } from './state.js';
 import { pushLog, notice } from './instruments.js';
 import { renderGit } from './readouts.js';
-import { clearCaptions, youSaid, jarvisSaid, jarvisReply, showSources, showKey, loadHotkey, showQuiet, loadQuiet, showUsed, dimPics, showImageStatus, addImage, setImageKept, imagesGone } from './ui.js';
+import { clearCaptions, youSaid, jarvisSaid, jarvisReply, showSources, showKey, loadHotkey, showQuiet, loadQuiet, showRole, loadRoles, setRoleBusy, showReasoning, showUsed, dimPics, showImageStatus, addImage, setImageKept, imagesGone } from './ui.js';
 import { onArtifact } from './art.js';
 import { resetPics, takeUsed } from './pictures.js';
 
@@ -19,6 +19,7 @@ function onMsg(m) {
       if (!PRE[m.value]) break;
       if (m.value === 'listening' && !m.followup) clearCaptions();
       setState(m.value, m.brain === 'claude' ? 'claude' : 'local');
+      setRoleBusy(m.value !== 'idle');
       break;
     case 'transcript':
       if (m.role === 'you') youSaid(m.text); else jarvisSaid(m.text);
@@ -54,6 +55,8 @@ case 'hotkey': showKey(m.value); break;
     case 'image_kept': setImageKept(m.name || '', !!m.kept); break;
     case 'image_gone': imagesGone(m.names || []); break;
     case 'quiet': showQuiet(m.value); break;
+    case 'role': showRole(m); break;
+    case 'reasoning': showReasoning(m.text); break;
     case 'artifact_open': case 'artifact_chunk': case 'artifact_done':
     case 'artifact_error': case 'artifact_close':
       onArtifact(m); break;
@@ -70,7 +73,7 @@ case 'hotkey': showKey(m.value); break;
 
 export function connect() {
   try { ws = new WebSocket(WS_URL); } catch (e) { return; }
-  ws.onopen = () => { LIVE.on = true; setState('idle'); pushLog('Link', 'backend connected'); resetPics(); loadHotkey(); loadQuiet(); };
+  ws.onopen = () => { LIVE.on = true; setState('idle'); pushLog('Link', 'backend connected'); resetPics(); loadHotkey(); loadQuiet(); loadRoles(); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (_) {} };
   ws.onclose = () => { LIVE.on = false; clearTimeout(retryTimer); retryTimer = setTimeout(connect, 3000); };
   ws.onerror = () => ws.close();

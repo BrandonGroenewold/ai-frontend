@@ -51,6 +51,13 @@ html, body { margin:0; height:100%; overflow:hidden; background:#010708; }
 #chatBar { grid-area:btn; display:flex; align-items:center; }
 #ctl #picBtn { width:26px; height:26px; padding:0; display:flex; align-items:center; justify-content:center; font-size:22px; line-height:1; border:0; border-radius:6px; color:rgba(var(--rgb),.7); }
 #ctl #picBtn:hover { background:transparent; color:#eafffb; }
+#ctl #roleBtn.off { opacity:.45; cursor:default; }
+#roleMenu { position:absolute; z-index:60; min-width:210px; padding:4px; background:rgba(6,18,22,.95); border:1px solid rgba(var(--rgb),.35); border-radius:8px; box-shadow:0 4px 18px rgba(0,0,0,.5); }
+#roleMenu[hidden] { display:none; }
+#roleMenu .roleItem { display:block; width:100%; margin:0; padding:6px 10px; text-align:left; font:inherit; font-size:12px; color:rgba(var(--rgb),.9); background:transparent; border:0; border-radius:6px; cursor:pointer; }
+#roleMenu .roleItem small { display:block; margin-top:1px; font-size:11px; opacity:.6; }
+#roleMenu .roleItem:hover { background:rgba(var(--rgb),.1); }
+#roleMenu .roleItem.on { background:rgba(var(--rgb),.18); }
 #chat.tall { grid-template-columns:1fr; grid-template-areas:"strip" "text" "btn"; row-gap:2px; }
 
 /* ---------- conversation panel ---------- */
@@ -67,6 +74,10 @@ html, body { margin:0; height:100%; overflow:hidden; background:#010708; }
 .msg .who { font-size:10px; letter-spacing:.16em; color:rgba(var(--rgb),.55); }
 .msg .body { white-space:pre-wrap; word-wrap:break-word; color:#eafffb; }
 .msg.you .body { color:rgba(var(--rgb),.85); }
+.msg .think { margin-top:4px; font-size:12px; }
+.msg .think summary { cursor:pointer; color:rgba(var(--rgb),.55); letter-spacing:.06em; }
+.msg .think summary:hover { color:rgba(var(--rgb),.9); }
+.msg .thinkBody { margin-top:4px; padding-left:8px; border-left:2px solid rgba(var(--rgb),.25); white-space:pre-wrap; word-wrap:break-word; color:rgba(var(--rgb),.6); }
 
 /* ---------- small screens ---------- */
 @media (max-width:1320px) { #chatPanel { width:240px; right:20px; } }
