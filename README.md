@@ -113,7 +113,7 @@ Limits such as context size, picture counts and history budgets are set per VRAM
 The backend is private for now, so the HUD will load and sit idle. To look around anyway:
 
 ```bash
-git clone https://github.com/<your-username>/ai-frontend.git
+git clone https://github.com/BrandonGroenewold/ai-frontend.git
 cd ai-frontend
 python -m http.server 5500
 ```
